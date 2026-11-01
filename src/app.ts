@@ -2,6 +2,7 @@ import { createSound, matchesSound, formatTime } from './sounds.ts';
 import type { Sound } from './sounds.ts';
 import { allSounds, saveSound } from './storage.ts';
 import { createPlayer } from './player.ts';
+import { downloadSound } from './import-audio.ts';
 
 function $<T extends HTMLElement = HTMLElement>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -158,10 +159,15 @@ form.addEventListener('submit', async event => {
     return;
   }
   saving = true;
-  for (const id of ['#save-sound', '#close-dialog', '#cancel-dialog']) $<HTMLButtonElement>(id).disabled = true;
-  $('#save-sound').firstChild!.textContent = 'Saving…';
+  const downloading = sound.source === 'youtube' && $<HTMLInputElement>('#download-audio').checked;
+  const controls = [...dialog.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, button')]
+    .map(element => ({ element, disabled: element.disabled }));
+  controls.forEach(({ element }) => { element.disabled = true; });
+  $('#save-sound').firstChild!.textContent = downloading ? 'Importing audio…' : 'Saving…';
+  $('#import-progress').hidden = !downloading;
   form.setAttribute('aria-busy', 'true');
   try {
+    if (downloading && sound.source === 'youtube') sound = await downloadSound(sound);
     await saveSound(sound);
     sounds.unshift(sound);
     favoritesOnly = false;
@@ -172,7 +178,8 @@ form.addEventListener('submit', async event => {
   } catch (error) { showError($('#form-error'), errorMessage(error)); }
   finally {
     saving = false;
-    for (const id of ['#save-sound', '#close-dialog', '#cancel-dialog']) $<HTMLButtonElement>(id).disabled = false;
+    controls.forEach(({ element, disabled }) => { element.disabled = disabled; });
+    $('#import-progress').hidden = true;
     $('#save-sound').firstChild!.textContent = 'Add to soundboard';
     form.setAttribute('aria-busy', 'false');
   }

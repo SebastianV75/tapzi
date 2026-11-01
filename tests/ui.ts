@@ -75,6 +75,7 @@ try {
   check(count() === '0' && !$('#empty').hidden, 'Fresh browser has an empty board');
   open();
   check(doc().activeElement?.id === 'sound-name', 'Dialog places focus in the name');
+  doc().querySelector<HTMLInputElement>('#download-audio')?.click();
   input('#sound-name', 'Épico final');
   input('#sound-url', 'https://youtube.com.evil.test/watch?v=dQw4w9WgXcQ');
   submit();
@@ -84,6 +85,7 @@ try {
   await reload();
   check(count() === '0', 'Rejected link was not persisted');
   open();
+  doc().querySelector<HTMLInputElement>('#download-audio')?.click();
   input('#sound-name', 'Épico final');
   input('#sound-url', 'https://youtu.be/dQw4w9WgXcQ');
   input('#clip-start', '0:03'); input('#clip-end', '0:08');
@@ -154,6 +156,45 @@ try {
   await pause();
   check(doc().documentElement.scrollWidth <= 1280, 'No desktop horizontal overflow');
   passed.push('360px and 1280px layout / touch targets / dialog focus');
+
+  open();
+  check(doc().querySelector<HTMLInputElement>('#download-audio')?.checked, 'YouTube audio download is the default for new additions');
+  const importRealm = frame.contentWindow as Window & typeof globalThis;
+  const originalFetch = importRealm.fetch.bind(importRealm);
+  const requests: { url: string; start?: string; end?: string }[] = [];
+  importRealm.fetch = async (resource, init) => {
+    if (String(resource) !== '/api/import-audio') return originalFetch(resource, init);
+    check(init?.method === 'POST', 'Audio import uses POST');
+    requests.push(JSON.parse(String(init.body)));
+    return new importRealm.Response(wav(), { headers: { 'Content-Type': 'audio/mpeg' } });
+  };
+  input('#sound-name', 'Imported reaction');
+  input('#sound-url', 'https://youtu.be/fTCbikSOYBg');
+  input('#clip-start', '0:02'); input('#clip-end', '0:05');
+  submit();
+  await wait(() => !$<HTMLDialogElement>('#add-dialog').open, 'download audio and save');
+  check(count() === '3', 'Successful import adds one sound');
+  check(JSON.stringify(requests[0]) === JSON.stringify({ url: 'https://www.youtube.com/watch?v=fTCbikSOYBg', start: '2', end: '5' }), 'Importer receives canonical link and normalized times');
+  check($('.pad-name').textContent === 'Imported reaction' && $('.pad-meta').textContent === 'Audio / on device', 'Imported audio is a local sound, not another embed');
+  await reload();
+  check(count() === '3', 'Imported audio persists after reload');
+  const importedPad = [...doc().querySelectorAll<HTMLButtonElement>('.pad')].find(pad => pad.textContent?.includes('Imported reaction'))!;
+  importedPad.click();
+  await wait(() => !$<HTMLAudioElement>('#audio-player').paused, 'play persisted imported audio');
+  check($('#youtube-wrap').hidden && !$('#audio-player').hidden, 'Imported sound plays without YouTube iframe');
+  $('.stop-all').click();
+  const newRealm = frame.contentWindow as Window & typeof globalThis;
+  const realFetch = newRealm.fetch.bind(newRealm);
+  newRealm.fetch = async (resource, init) => String(resource) === '/api/import-audio'
+    ? new newRealm.Response(JSON.stringify({ error: 'YouTube blocked this request; no audio was saved.' }), { status: 502, headers: { 'Content-Type': 'application/json' } })
+    : realFetch(resource, init);
+  open(); input('#sound-name', 'Rejected import'); input('#sound-url', 'https://youtu.be/fTCbikSOYBg'); submit();
+  await wait(() => !$('#form-error').hidden, 'import error displayed');
+  check($('#form-error').textContent === 'YouTube blocked this request; no audio was saved.', 'Exact backend error is visible');
+  check(count() === '3' && $<HTMLDialogElement>('#add-dialog').open && !$<HTMLButtonElement>('#save-sound').disabled, 'Failed import changes no count and permits retry');
+  $('#cancel-dialog').click(); await reload();
+  check(count() === '3' && ![...doc().querySelectorAll('.pad-name')].some(pad => pad.textContent === 'Rejected import'), 'Failed import did not persist a record');
+  passed.push('Default yt-dlp import / persisted local playback / failed import leaves data unchanged');
   results.dataset.result = 'passed';
   results.textContent = `PASS (${passed.length} groups)\n${passed.join('\n')}`;
 } catch (error) {

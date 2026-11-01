@@ -44,7 +44,7 @@
         <div class="track-info"><h3 id="track-name">No sound selected</h3><p id="track-detail">One sound at a time. All yours.</p></div>
         <button class="button secondary stop-all" disabled><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>Stop playback</button>
         <p id="playback-message" class="player-message" role="status" aria-live="polite"></p>
-        <div class="device-info"><svg class="icon" aria-hidden="true"><use href="#i-device"/></svg><div><h3>Saved on this device</h3><p>Your collection stays in this browser. YouTube needs internet; audio files stay local.</p></div></div>
+        <div class="device-info"><svg class="icon" aria-hidden="true"><use href="#i-device"/></svg><div><h3>Saved on this device</h3><p>Your collection stays in this browser. Imported and uploaded audio plays locally; saved YouTube links need internet.</p></div></div>
       </aside>
     </div>
     <footer><span>tapzi / press play, say less</span><span>No account. Just your sounds.</span></footer>
@@ -56,10 +56,13 @@
       <fieldset class="source-options"><legend class="sr-only">Sound source</legend><label><input type="radio" name="source" value="youtube" checked><span><svg class="icon" aria-hidden="true"><use href="#i-video"/></svg>YouTube link</span></label><label><input type="radio" name="source" value="local"><span><svg class="icon" aria-hidden="true"><use href="#i-upload"/></svg>Audio file</span></label></fieldset>
       <div class="field"><label for="sound-name">Sound name</label><input id="sound-name" name="name" maxlength="60" placeholder="That one dramatic entrance" required aria-describedby="form-error" autocomplete="off"></div>
       <div id="youtube-fields">
-        <div class="field"><label for="sound-url">YouTube link</label><input id="sound-url" name="url" type="url" placeholder="https://youtube.com/watch?v=…" aria-describedby="url-help form-error" autocapitalize="none" spellcheck="false"><small id="url-help">Plays with the visible YouTube player, not as a downloaded audio</small></div>
+        <div class="field"><label for="sound-url">YouTube link</label><input id="sound-url" name="url" type="url" placeholder="https://youtube.com/watch?v=…" aria-describedby="url-help form-error" autocapitalize="none" spellcheck="false"><small id="url-help">Import an audio file, or save an online link to the visible YouTube player</small></div>
+        <label class="import-option"><input id="download-audio" name="download" type="checkbox" checked aria-describedby="download-help"><span>Download audio to this device</span></label>
+        <small id="download-help">Needs yt-dlp and FFmpeg on the computer running Tapzi. Uncheck to save an online YouTube link instead. Only download audio you have permission to use.</small>
         <div class="time-fields"><div class="field"><label for="clip-start">Start at</label><input id="clip-start" name="start" placeholder="0:00" aria-describedby="time-help form-error"></div><div class="field"><label for="clip-end">End at <span class="muted">(optional)</span></label><input id="clip-end" name="end" placeholder="0:12" aria-describedby="time-help form-error"></div></div><small id="time-help">Use seconds or m:ss · Leave the end empty to play to the end</small>
       </div>
       <div id="local-fields" hidden><div class="field"><label for="sound-file">Audio file</label><input id="sound-file" name="file" type="file" accept="audio/*" aria-describedby="file-help form-error"><small id="file-help">MP3, WAV, M4A or another browser-supported audio · Up to 25 MB</small></div><p class="local-explainer">Saved in this browser, never uploaded. Clearing browser data removes your collection.</p></div>
+      <p id="import-progress" class="local-explainer" role="status" hidden>Downloading and converting audio on your computer… This can take up to two minutes. Nothing is added until the import finishes.</p>
       <p id="form-error" class="error" role="alert" hidden></p>
       <div class="form-actions"><button id="cancel-dialog" type="button" class="button secondary">Cancel</button><button id="save-sound" class="button primary" type="submit">Add to soundboard<svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button></div>
     </form>

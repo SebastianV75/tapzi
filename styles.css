@@ -138,6 +138,10 @@ input[type='file'] { padding: 8px; }
 input::file-selector-button { min-height: 44px; padding: 8px 12px; margin-right: 12px; color: var(--ink); background: var(--lavender-soft); border: 1px solid var(--line); border-radius: 3px; font: inherit; cursor: pointer; }
 small, .local-explainer { display: block; font-size: 13px; line-height: 1.5; color: var(--muted); }
 .muted { color: var(--muted); font-weight: 400; }
+.import-option { display: flex; align-items: center; gap: 12px; min-height: 44px; margin-top: 4px; font-size: 14px; cursor: pointer; }
+.import-option input { width: 20px; height: 20px; margin: 0; accent-color: var(--focus); flex-shrink: 0; }
+#download-help { margin: 4px 0 20px; }
+#import-progress { margin-top: 20px; }
 .time-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .time-fields .field { margin-bottom: 8px; }
 .error { color: var(--error); border-left: 3px solid var(--error); padding: 12px; margin-block: 16px; font-size: 14px; overflow-wrap: anywhere; }
