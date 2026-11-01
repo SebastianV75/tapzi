@@ -12,5 +12,5 @@
     "types": ["node"],
     "erasableSyntaxOnly": true
   },
-  "include": ["src", "tests/*.ts"]
+  "include": ["src", "server/*.ts", "vite.config.ts", "tests/*.ts"]
 }
