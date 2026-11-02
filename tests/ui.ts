@@ -30,6 +30,11 @@ async function reload(): Promise<void> {
   await ready();
 }
 function open(): void { $('.add-trigger').click(); check($<HTMLDialogElement>('#add-dialog').open, 'Dialog opens'); }
+function openTrim(): void {
+  const trim = $<HTMLDetailsElement>('#trim-options');
+  if (!trim.open) $<HTMLElement>('#trim-options > summary').click();
+  check($('#clip-start').checkVisibility() && $('#clip-end').checkVisibility(), 'Opening Trim audio exposes both time fields');
+}
 function submit(): void { $<HTMLFormElement>('#add-form').requestSubmit(); }
 function count(): string | null { return $('#total').textContent; }
 const clips: { videoId: string; startSeconds: number; endSeconds?: number }[] = [];
@@ -75,6 +80,17 @@ try {
   check(count() === '0' && !$('#empty').hidden, 'Fresh browser has an empty board');
   open();
   check(doc().activeElement?.id === 'sound-name', 'Dialog places focus in the name');
+  check($('.add-trigger').checkVisibility(), 'First add trigger is visible and actionable');
+  check(!$<HTMLDetailsElement>('#download-details').open, 'Secondary download explanation starts collapsed');
+  check($('#download-audio').checkVisibility() && $<HTMLInputElement>('#download-audio').checked, 'Default download choice stays visible');
+  check($('#download-help').checkVisibility() && $('#download-help').textContent!.includes('yt-dlp and FFmpeg'), 'Local tool requirement stays visible');
+  $('#download-details > summary').click();
+  check($('#download-explanation').checkVisibility(), 'Download explanation is accessible on opening disclosure');
+  $('#download-details > summary').click();
+  check(!$<HTMLDetailsElement>('#trim-options').open && !$('#clip-start').checkVisibility(), 'Optional trim fields start collapsed');
+  openTrim();
+  $('#trim-options > summary').click();
+  check(!$('#clip-end').checkVisibility(), 'Trim fields can be collapsed again');
   doc().querySelector<HTMLInputElement>('#download-audio')?.click();
   input('#sound-name', 'Épico final');
   input('#sound-url', 'https://youtube.com.evil.test/watch?v=dQw4w9WgXcQ');
@@ -88,6 +104,7 @@ try {
   doc().querySelector<HTMLInputElement>('#download-audio')?.click();
   input('#sound-name', 'Épico final');
   input('#sound-url', 'https://youtu.be/dQw4w9WgXcQ');
+  openTrim();
   input('#clip-start', '0:03'); input('#clip-end', '0:08');
   submit();
   await wait(() => !$<HTMLDialogElement>('#add-dialog').open, 'save YouTube clip');
@@ -149,8 +166,20 @@ try {
   for (const button of doc().querySelectorAll<HTMLButtonElement>('.pad, .favorite-button, .add-trigger')) {
     if (button.getClientRects().length) check(button.getBoundingClientRect().height >= 44, 'Visible touch targets are at least 44px');
   }
+  frame.style.width = '390px';
+  await pause();
+  check(doc().documentElement.scrollWidth <= 390, 'No horizontal overflow at 390px');
+  frame.style.width = '360px';
   open();
   check($<HTMLDialogElement>('#add-dialog').getBoundingClientRect().right <= 360, 'Dialog fits mobile viewport');
+  openTrim();
+  $('#download-details > summary').click();
+  for (const control of doc().querySelectorAll<HTMLElement>('#add-dialog button, #add-dialog summary, .source-options label, .import-option, .field input')) {
+    if (control.checkVisibility()) check(control.getBoundingClientRect().height >= 44, 'Visible form controls have 44px touch targets');
+  }
+  for (const field of doc().querySelectorAll<HTMLInputElement>('#add-dialog .field input')) {
+    if (field.checkVisibility()) check(parseFloat(frame.contentWindow!.getComputedStyle(field).fontSize) >= 16, 'Visible text inputs avoid mobile zoom');
+  }
   $('#cancel-dialog').click();
   frame.style.width = '1280px';
   await pause();
@@ -170,6 +199,7 @@ try {
   };
   input('#sound-name', 'Imported reaction');
   input('#sound-url', 'https://youtu.be/fTCbikSOYBg');
+  openTrim();
   input('#clip-start', '0:02'); input('#clip-end', '0:05');
   submit();
   await wait(() => !$<HTMLDialogElement>('#add-dialog').open, 'download audio and save');

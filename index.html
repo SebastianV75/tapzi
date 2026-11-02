@@ -16,50 +16,54 @@
   <header class="topbar">
     <a class="brand" href="/" aria-label="Tapzi home"><svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true"><rect x="2" y="2" width="11" height="11" rx="3" fill="currentColor"/><rect x="17" y="2" width="11" height="11" rx="3" fill="currentColor" opacity=".25"/><rect x="2" y="17" width="11" height="11" rx="3" fill="currentColor" opacity=".25"/><rect x="17" y="17" width="11" height="11" rx="3" fill="currentColor" opacity=".25"/></svg><span>tapzi<span class="brand-dot">.</span></span></a>
     <span class="header-caption">Your pocket soundboard</span>
-    <button class="button secondary stop-all" disabled><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>Stop all</button>
+    <button class="button primary add-trigger"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Add a sound</button>
   </header>
   <main>
     <section class="page-heading" aria-labelledby="page-title">
-      <div><p class="eyebrow">Personal sound collection</p><h1 id="page-title">Small sounds. Good timing<span class="accent">.</span></h1><p class="intro">Your favorite reactions, one tap away.</p></div>
-      <button class="button primary add-trigger"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Add a sound</button>
+      <h1 id="page-title">Your soundboard<span class="accent">.</span></h1>
     </section>
     <div class="workspace">
       <section class="library" aria-labelledby="library-title">
-        <div class="library-heading"><h2 id="library-title"><span class="section-number" aria-hidden="true">01 /</span> Soundboard <span id="total" class="count">0</span></h2><span class="local-note"><svg class="icon" aria-hidden="true"><use href="#i-device"/></svg>On this device</span></div>
+        <div class="library-heading"><h2 id="library-title">Sounds <span id="total" class="count">0</span></h2></div>
         <div class="toolbar"><div class="filters" aria-label="Filter sounds"><button class="filter selected" id="all-filter" aria-pressed="true">All sounds</button><button class="filter" id="favorite-filter" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>Favorites</button></div><label class="search"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search sounds</span><input id="search" type="search" placeholder="Search sounds" autocomplete="off"></label></div>
         <p id="app-error" class="error" role="alert" hidden></p>
         <ul id="board" class="board" tabindex="-1" aria-label="Your sounds" aria-busy="true"></ul>
         <div id="empty" class="empty-state" hidden>
-          <div class="empty-pads" aria-hidden="true"><span>01<svg class="icon"><use href="#i-play"/></svg></span><span>02</span><span>03</span><span>04</span></div>
-          <h3>Your first sound goes here</h3><p>Paste a YouTube link or choose an audio file.<br>Keep the good ones close.</p><button class="button primary add-trigger">Add your first sound<svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button>
+          <h3>Your first sound goes here</h3><p>Add a YouTube link or an audio file to get started.</p><button class="button primary add-trigger">Add your first sound<svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button>
         </div>
         <div id="no-results" class="no-results" hidden><h3>No sounds here yet</h3><p>Try another search or switch to all sounds</p><button id="clear-filter" class="button secondary">Show all sounds</button></div>
         <p class="library-footnote">Tap to play / Star to keep a favorite</p>
       </section>
       <aside class="player-panel" aria-labelledby="player-title">
-        <div class="panel-heading"><h2 id="player-title"><span class="section-number" aria-hidden="true">02 /</span> Now playing</h2><span id="player-state" class="meta">Standby</span></div>
-        <div id="idle-player" class="idle-player"><svg viewBox="0 0 180 100" aria-hidden="true"><g fill="currentColor"><rect x="18" y="40" width="8" height="20" rx="4"/><rect x="38" y="28" width="8" height="44" rx="4"/><rect x="58" y="16" width="8" height="68" rx="4"/><rect x="78" y="4" width="8" height="92" rx="4"/><rect x="98" y="24" width="8" height="52" rx="4"/><rect x="118" y="36" width="8" height="28" rx="4"/><rect x="138" y="44" width="8" height="12" rx="4"/></g></svg><p>Waiting for your cue</p><span>Tap a pad to play a sound</span></div>
+        <div class="panel-heading"><h2 id="player-title">Now playing</h2><span id="player-state" class="meta">Standby</span></div>
+        <div id="idle-player" class="idle-player"><p>Tap a pad to play</p></div>
         <div id="youtube-wrap" hidden><div id="youtube-player"></div></div>
         <audio id="audio-player" controls preload="none" hidden></audio>
-        <div class="track-info"><h3 id="track-name">No sound selected</h3><p id="track-detail">One sound at a time. All yours.</p></div>
-        <button class="button secondary stop-all" disabled><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>Stop playback</button>
+        <div class="track-info"><h3 id="track-name">No sound selected</h3><p id="track-detail">One sound at a time.</p></div>
+        <button class="button secondary stop-all" disabled><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>Stop all</button>
         <p id="playback-message" class="player-message" role="status" aria-live="polite"></p>
-        <div class="device-info"><svg class="icon" aria-hidden="true"><use href="#i-device"/></svg><div><h3>Saved on this device</h3><p>Your collection stays in this browser. Imported and uploaded audio plays locally; saved YouTube links need internet.</p></div></div>
+        <div class="device-info"><svg class="icon" aria-hidden="true"><use href="#i-device"/></svg><div><h3>Saved on this device</h3><p>Audio stays in this browser. YouTube links need internet. Clearing browser data removes your collection.</p></div></div>
       </aside>
     </div>
-    <footer><span>tapzi / press play, say less</span><span>No account. Just your sounds.</span></footer>
   </main>
   <dialog id="add-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-description">
-    <div class="dialog-heading"><div><p class="eyebrow">One more for the collection</p><h2 id="dialog-title">Add a sound</h2></div><button id="close-dialog" class="icon-button" aria-label="Close add sound"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+    <div class="dialog-heading"><div><h2 id="dialog-title">Add a sound</h2></div><button id="close-dialog" class="icon-button" aria-label="Close add sound"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div>
     <p id="dialog-description">Save a YouTube link or an audio file to your board.</p>
     <form id="add-form" novalidate>
       <fieldset class="source-options"><legend class="sr-only">Sound source</legend><label><input type="radio" name="source" value="youtube" checked><span><svg class="icon" aria-hidden="true"><use href="#i-video"/></svg>YouTube link</span></label><label><input type="radio" name="source" value="local"><span><svg class="icon" aria-hidden="true"><use href="#i-upload"/></svg>Audio file</span></label></fieldset>
-      <div class="field"><label for="sound-name">Sound name</label><input id="sound-name" name="name" maxlength="60" placeholder="That one dramatic entrance" required aria-describedby="form-error" autocomplete="off"></div>
+      <div class="field"><label for="sound-name">Sound name</label><input id="sound-name" name="name" maxlength="60" placeholder="Give it a name" required aria-describedby="form-error" autocomplete="off"></div>
       <div id="youtube-fields">
-        <div class="field"><label for="sound-url">YouTube link</label><input id="sound-url" name="url" type="url" placeholder="https://youtube.com/watch?v=…" aria-describedby="url-help form-error" autocapitalize="none" spellcheck="false"><small id="url-help">Import an audio file, or save an online link to the visible YouTube player</small></div>
+        <div class="field"><label for="sound-url">YouTube link</label><input id="sound-url" name="url" type="url" placeholder="https://youtube.com/watch?v=…" aria-describedby="url-help form-error" autocapitalize="none" spellcheck="false"></div>
         <label class="import-option"><input id="download-audio" name="download" type="checkbox" checked aria-describedby="download-help"><span>Download audio to this device</span></label>
-        <small id="download-help">Needs yt-dlp and FFmpeg on the computer running Tapzi. Uncheck to save an online YouTube link instead. Only download audio you have permission to use.</small>
-        <div class="time-fields"><div class="field"><label for="clip-start">Start at</label><input id="clip-start" name="start" placeholder="0:00" aria-describedby="time-help form-error"></div><div class="field"><label for="clip-end">End at <span class="muted">(optional)</span></label><input id="clip-end" name="end" placeholder="0:12" aria-describedby="time-help form-error"></div></div><small id="time-help">Use seconds or m:ss · Leave the end empty to play to the end</small>
+        <small id="download-help">Needs yt-dlp and FFmpeg on the computer running Tapzi.</small>
+        <details id="download-details" class="form-disclosure">
+          <summary>About downloads &amp; online links</summary>
+          <p id="download-explanation"><span id="url-help">Uncheck download to save an online link using the visible YouTube player instead.</span> Online playback needs internet and may be restricted by YouTube. Only download audio you have permission to use.</p>
+        </details>
+        <details id="trim-options" class="form-disclosure">
+          <summary>Trim audio <span class="muted">(optional)</span></summary>
+          <div class="time-fields"><div class="field"><label for="clip-start">Start at</label><input id="clip-start" name="start" placeholder="0:00" aria-describedby="time-help form-error"></div><div class="field"><label for="clip-end">End at <span class="muted">(optional)</span></label><input id="clip-end" name="end" placeholder="0:12" aria-describedby="time-help form-error"></div></div><small id="time-help">Use seconds or m:ss · Leave the end empty to play to the end</small>
+        </details>
       </div>
       <div id="local-fields" hidden><div class="field"><label for="sound-file">Audio file</label><input id="sound-file" name="file" type="file" accept="audio/*" aria-describedby="file-help form-error"><small id="file-help">MP3, WAV, M4A or another browser-supported audio · Up to 25 MB</small></div><p class="local-explainer">Saved in this browser, never uploaded. Clearing browser data removes your collection.</p></div>
       <p id="import-progress" class="local-explainer" role="status" hidden>Downloading and converting audio on your computer… This can take up to two minutes. Nothing is added until the import finishes.</p>

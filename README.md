@@ -17,8 +17,8 @@ Open the local URL printed by Vite (normally `http://127.0.0.1:5173`). Imports a
 
 1. Choose **Add a sound** and enter a name.
 2. Paste an HTTPS YouTube video link, or switch to **Audio file** and choose a file up to 25 MB.
-3. For YouTube, set the start and optional end in seconds or `m:ss`. URL timestamps are not imported automatically; use these explicit fields.
-4. **Download audio to this device** is checked by default. Saving downloads/converts the selected audio on your computer and stores the returned file in this browser. Wait for it to finish, then tap its pad.
+3. For YouTube, open **Trim audio (optional)** to set the start and optional end in seconds or `m:ss`. URL timestamps are not imported automatically; use these explicit fields.
+4. **Download audio to this device** is checked by default. Open **About downloads & online links** for playback requirements and restrictions. Saving downloads/converts the selected audio on your computer and stores the returned file in this browser. Wait for it to finish, then tap its pad.
 5. To keep using the official visible YouTube player instead, uncheck the download option before saving. Existing saved links are unchanged. Tap a pad again or use **Stop all** to stop playback.
 
 Downloads need permission to use the content and may fail because of YouTube restrictions. A failed import displays the reason and adds no sound; it does not silently save another online link.
