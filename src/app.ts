@@ -72,12 +72,14 @@ function render(): void {
   $('#no-results-description').textContent = favoritesOnly && !search.value.trim() ? 'Toca la estrella de un sonido para tenerlo siempre a mano.' : 'Prueba con otro nombre o vuelve a verlos todos.'; $('#no-results').hidden = sounds.length === 0 || visible.length !== 0;
   board.hidden = visible.length === 0; board.setAttribute('aria-busy', 'false');
   for (const [id, selected] of [['#all-filter', !favoritesOnly], ['#favorite-filter', favoritesOnly]] as const) { $(id).setAttribute('aria-pressed', String(selected)); $(id).classList.toggle('selected', selected); }
+  const positions = new Map(sounds.map((sound, index) => [sound.id, String(index + 1).padStart(2, '0')]));
   for (const sound of visible) {
     const card = document.createElement('li'); card.className = `sound-card${sound.id === activeId ? ' is-playing' : ''}`; card.dataset.color = sound.color ?? 'lavender';
     const pad = document.createElement('button'); pad.className = 'pad'; pad.dataset.soundId = sound.id; pad.dataset.action = 'play';
     pad.setAttribute('aria-label', `${sound.id === activeId ? 'Detener' : 'Reproducir'} ${sound.name}`); pad.setAttribute('aria-pressed', String(sound.id === activeId));
     const top = text('span', 'pad-top', ''); const playIcon = text('span', 'pad-icon', ''); playIcon.append(icon(sound.id === activeId ? 'stop' : 'wave'));
-    top.append(playIcon);
+    const position = text('span', 'pad-index', positions.get(sound.id) ?? ''); position.setAttribute('aria-hidden', 'true');
+    top.append(playIcon, position);
     const detail = sound.id === activeId ? (sound.source === 'local' && $<HTMLAudioElement>('#audio-player').paused ? 'En pausa' : 'Sonando ahora') : sound.source === 'youtube' ? 'YouTube · online' : sound.duration ? formatTime(sound.duration) : 'Audio';
     pad.append(top, text('span', 'pad-name', sound.name), text('span', 'pad-meta', detail));
     pad.addEventListener('click', () => { clipEditor.pause(); if (activeId === sound.id) player.stop(); else void player.play(sound); });
