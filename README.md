@@ -4,10 +4,10 @@ Tu botonera personal de bolsillo. Web estática en TypeScript: **sin cuentas, AP
 
 ## Usarla
 
-1. Tocá **Agregar → Audio o video** y elegí un archivo del teléfono.
-2. Escuchalo, elegí el inicio y el final, poné un nombre y un color.
-3. Guardalo. Tocá el botón para reproducir; tocá de nuevo para detener.
-4. La estrella lo agrega a favoritos; **···** permite editar, compartir el audio o eliminarlo con opción de deshacer.
+1. Toca **Agregar sonido → Seleccionar archivo** y elige un audio o video. También puedes arrastrarlo al selector desde una computadora.
+2. El nombre se sugiere automáticamente. Escúchalo y guarda directamente, o abre **Recortar** para arrastrar inicio/final. Los segundos exactos y el color son opcionales.
+3. Guarda y toca la tarjeta para reproducir. El reproductor inferior permite pausar, continuar, repetir y moverse por el audio. Otro toque en la tarjeta lo detiene.
+4. La estrella lo agrega a favoritos; **···** permite editar, compartir o eliminar con deshacer. Cerrar un sonido sin guardar pregunta antes de descartar.
 5. En **ajustes**, guardá una copia `.tapzi`. Incluye audios, nombres, colores y favoritos. Restaurar agrega lo que falta sin reemplazar los sonidos existentes.
 
 La botonera comienza vacía. **Probar con tres sonidos** crea tres tonos originales localmente; no descarga contenido de terceros.
@@ -39,7 +39,7 @@ npm run build
 npm run test:browser     # requiere el build y Chromium
 ```
 
-`CHROMIUM=/ruta/a/chromium` permite elegir el ejecutable. Las pruebas usan perfiles descartables, archivos sintéticos y un servidor local temporal. Verifican recorte real de WAV, extracción de audio AAC de un MP4, reproducción, persistencia, edición, borrado/deshacer, restauración, protección contra duplicados, y tamaños de 320 a 1280 px. El test de producción abandona la página y vuelve a abrirla con la red desactivada, verificando reproducción desde IndexedDB. YouTube usa un doble de prueba; no hay conversiones ni solicitudes a proveedores externos durante los tests.
+`CHROMIUM=/ruta/a/chromium` permite elegir el ejecutable. Las pruebas usan perfiles descartables, archivos sintéticos y un servidor local temporal. Verifican recorte real de WAV, extracción de audio AAC de un MP4, reproducción, persistencia, edición, borrado/deshacer, restauración, protección contra duplicados, y tamaños de 320 a 1280 px. También verifican el selector progresivo, límites que no se cruzan, protección del borrador, cambio de archivo conservando el nombre, recortes de 50 ms, pausa inmediata sin errores y controles de reproducción. En producción se comprueban el selector de archivos y el teclado nativo para recortar. El test de producción abandona la página y vuelve a abrirla con la red desactivada, verificando reproducción desde IndexedDB. YouTube usa un doble de prueba; no hay conversiones ni solicitudes a proveedores externos durante los tests.
 
 ## Publicar sin backend
 
@@ -76,7 +76,8 @@ El almacenamiento pertenece al navegador/app instalada y al origen. iOS puede el
 
 ## Estructura
 
-- `src/app.ts`: interfaz, importación local, editor y gestión de colección.
+- `src/app.ts`: biblioteca, diálogos y gestión de colección.
+- `src/clip-editor.ts`: selector progresivo, preescucha, límites visuales, reemplazo de archivo y forma de onda real opcional (archivos cortos de hasta 8 MB).
 - `src/media.ts`: límites, extracción/recorte con Web Audio y codificador WAV.
 - `src/storage.ts`: IndexedDB y restauración atómica.
 - `src/backup.ts`: formato `.tapzi`, validación y empaquetado.
@@ -87,4 +88,4 @@ El importador anterior con yt-dlp se conserva como herramienta de desarrollo **d
 
 ## Dirección visual
 
-Azul suave, lavanda, tipografía serif y botones de sampler. Basada en las referencias elegidas por el usuario: [Pond Linux](https://www.butterfly.so/pond), [Unslop](https://github.com/heydamir/unslop), UI Skills y Emil Kowalski. Iconos [Lucide](https://lucide.dev), licencia ISC; ver [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Versión 0.3: superficie clara, tipografía de sistema, tarjetas suaves en cuatro colores y lavanda en la acción principal. Biblioteca centrada, botón de agregar al alcance del pulgar, reproductor inferior y editor progresivo. Conserva los tonos de las referencias anteriores y sustituye las líneas marcadas, la numeración y el panel lateral. Respeta movimiento reducido, navegación por teclado y tamaños táctiles. Basada en las referencias elegidas por el usuario: [Pond Linux](https://www.butterfly.so/pond), [Unslop](https://github.com/heydamir/unslop), UI Skills y Emil Kowalski. Iconos [Lucide](https://lucide.dev), licencia ISC; ver [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

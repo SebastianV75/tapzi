@@ -102,6 +102,8 @@ try {
       const timeout = setTimeout(() => reject(new Error('Worker did not take control')), 10000);
       const check = () => { if (navigator.serviceWorker.controller && document.querySelector('#board').getAttribute('aria-busy') === 'false') { clearTimeout(timeout); resolve(true); } else setTimeout(check, 25); }; check();
     })`);
+    await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+    await writeFile('.cache/tapzi-empty.png', Buffer.from((await call('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
     await evaluate(`document.querySelector('#demo-trigger').click()`);
     await evaluate(`new Promise(resolve => { const check = () => document.querySelector('#total').textContent === '3' ? resolve(true) : setTimeout(check, 25); check(); })`);
     const cacheHasHTML = await evaluate(`caches.keys().then(async keys => Boolean(await (await caches.open(keys.find(k => k.startsWith('tapzi-shell-')))).match('/index.html')))`);
@@ -119,6 +121,30 @@ try {
     await evaluate(`document.querySelector('.stop-all').click()`);
     const screenshot = await call('Page.captureScreenshot', { format: 'png' });
     await writeFile('.cache/tapzi-mobile.png', Buffer.from(screenshot.data, 'base64'));
+    await evaluate(`document.querySelector('.pad').click(); document.querySelector('#play-pause').click()`);
+    await evaluate(`new Promise(resolve => setTimeout(resolve, 100))`);
+    if (await evaluate(`document.querySelector('#mobile-transport').hidden || Boolean(document.querySelector('#playback-message').textContent)`)) throw new Error('Rapid pause hid the player or displayed an error');
+    await writeFile('.cache/tapzi-player.png', Buffer.from((await call('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+    await evaluate(`document.querySelector('.stop-all').click()`);
+    await call('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+    await writeFile('.cache/tapzi-desktop.png', Buffer.from((await call('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+    await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await evaluate(`[...document.querySelectorAll('.add-trigger')].find(node => node.checkVisibility()).click()`);
+    await writeFile('.cache/tapzi-choose-file.png', Buffer.from((await call('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+    const { root } = await call('DOM.getDocument');
+    const { nodeId } = await call('DOM.querySelector', { nodeId: root.nodeId, selector: '#sound-file' });
+    await call('DOM.setFileInputFiles', { nodeId, files: [path.resolve('tests/fixtures/tone.mp4')] });
+    await evaluate(`new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error('Production file picker did not prepare the editor')), 7000); const check = () => { if (!document.querySelector('#sound-details').hidden) { clearTimeout(timer); resolve(true); } else setTimeout(check, 25); }; check(); })`);
+    await evaluate(`document.querySelector('#toggle-trim').click()`);
+    await writeFile('.cache/tapzi-editor.png', Buffer.from((await call('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+    // A real keyboard event, rather than assigning a value, verifies native range access.
+    await evaluate(`document.querySelector('#trim-start').focus()`);
+    await call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
+    await call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
+    if (!(await evaluate(`Number(document.querySelector('#local-start').value) > 0`))) throw new Error('Keyboard range selection did not update the clip');
+    await evaluate(`document.querySelector('#close-dialog').click(); document.querySelector('#confirm-discard').click()`);
+    console.log('PASS production file chooser / native keyboard trim / mobile and desktop visual captures');
+
   }
 } finally {
   clearTimeout(deadline);

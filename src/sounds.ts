@@ -17,6 +17,7 @@ export interface YouTubeSound extends SoundBase {
   end: number | null;
 }
 export interface LocalSound extends SoundBase {
+  duration?: number;
   source: 'local';
   blob: Blob;
   fileName: string;

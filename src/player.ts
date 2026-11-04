@@ -64,6 +64,38 @@ export function createPlayer(onChange: (id: string | null) => void): { play(soun
   let objectURL: string | null = null;
   let request = 0;
   let current: Sound | null = null;
+  const interrupted = (error: unknown): boolean => error instanceof DOMException && error.name === 'AbortError';
+  const pauseButton = element<HTMLButtonElement>('#play-pause');
+  const seek = element<HTMLInputElement>('#playback-seek');
+  const timeline = element('#playback-timeline');
+  const replayButton = element<HTMLButtonElement>('#replay-sound');
+  const progress = (): void => {
+    if (current?.source !== 'local') return;
+    const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+    seek.max = String(duration || 1); seek.value = String(audio.currentTime);
+    seek.disabled = !duration;
+    seek.setAttribute('aria-valuetext', `${formatTime(audio.currentTime)} de ${formatTime(duration)}`);
+    element('#playback-current').textContent = formatTime(audio.currentTime);
+    element('#playback-total').textContent = formatTime(duration);
+  };
+  const pauseState = (): void => {
+    pauseButton.setAttribute('aria-label', audio.paused ? 'Continuar reproducción' : 'Pausar');
+    pauseButton.querySelector('use')!.setAttribute('href', audio.paused ? '#i-play' : '#i-pause');
+  };
+  pauseButton.addEventListener('click', () => {
+    if (current?.source !== 'local') return;
+    if (!audio.paused) audio.pause();
+    else { const token = request; void audio.play().catch(error => { if (token === request && !interrupted(error)) fail(new Error('No se pudo continuar el audio. Toca el sonido para intentarlo otra vez.')); }); }
+  });
+  replayButton.addEventListener('click', () => {
+    if (current?.source !== 'local') return;
+    const token = request; audio.currentTime = 0;
+    void audio.play().catch(error => { if (token === request && !interrupted(error)) fail(new Error('No se pudo repetir el audio.')); });
+  });
+  seek.addEventListener('input', () => { if (current?.source === 'local' && Number.isFinite(audio.duration)) audio.currentTime = Number(seek.value); });
+  for (const event of ['timeupdate', 'durationchange', 'loadedmetadata']) audio.addEventListener(event, progress);
+  for (const event of ['playing', 'pause', 'ended']) audio.addEventListener(event, pauseState);
+
 
   function stop(): void {
     request++;
@@ -80,7 +112,8 @@ export function createPlayer(onChange: (id: string | null) => void): { play(soun
     idle.hidden = false;
     state.textContent = 'En pausa';
     message.textContent = '';
-    element('#track-name').textContent = 'Tocá cualquier sonido';
+    element('#track-name').textContent = 'Selecciona un sonido';
+    seek.value = '0'; seek.disabled = true; pauseState();
     element('#track-detail').textContent = 'Uno a la vez, para que se escuche bien.';
     document.querySelectorAll<HTMLButtonElement>('.stop-all').forEach(button => { button.disabled = true; });
     onChange(null);
@@ -110,9 +143,10 @@ export function createPlayer(onChange: (id: string | null) => void): { play(soun
     onChange(sound.id);
     idle.hidden = true;
     state.textContent = 'Cargando';
+    timeline.hidden = sound.source !== 'local'; pauseButton.hidden = sound.source !== 'local'; replayButton.hidden = sound.source !== 'local';
     element('#track-name').textContent = sound.name;
     element('#track-detail').textContent = sound.source === 'youtube'
-      ? `YouTube · ${formatTime(sound.start)} → ${sound.end === null ? 'end' : formatTime(sound.end)}`
+      ? `YouTube · ${formatTime(sound.start)} → ${sound.end === null ? 'final' : formatTime(sound.end)}`
       : 'Audio local · Guardado en este dispositivo';
     document.querySelectorAll<HTMLButtonElement>('.stop-all').forEach(button => { button.disabled = false; });
     try {
@@ -158,7 +192,7 @@ export function createPlayer(onChange: (id: string | null) => void): { play(soun
         });
       }
     } catch (error) {
-      if (token === request) fail(error instanceof Error ? error : new Error('No se pudo iniciar la reproducción. Intentá otra vez.'));
+      if (token === request && !interrupted(error)) fail(error instanceof Error ? error : new Error('No se pudo iniciar la reproducción. Intentá otra vez.'));
     }
   }
   return { play, stop };

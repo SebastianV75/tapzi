@@ -41,7 +41,7 @@ export function encodeWav(channels: Float32Array[], sampleRate: number): Blob {
 export async function prepareAudio(file: File, start: number, end: number, duration: number): Promise<File> {
   validateMedia(file);
   clipRange(start, end, duration);
-  if (!isVideo(file) && start === 0 && Math.abs(end - duration) < 0.1) {
+  if (!isVideo(file) && start === 0 && Math.abs(end - duration) < 0.000001) {
     if (file.size > MAX_AUDIO_BYTES) throw new Error('El audio supera 25 MB. Seleccioná un fragmento.');
     return new File([file], file.name, { type: mediaType(file) });
   }

@@ -29,7 +29,7 @@ async function reload(): Promise<void> {
   await new Promise<void>(resolve => { frame.onload = () => resolve(); frame.contentWindow!.location.reload(); });
   await ready();
 }
-function open(): void { $('.add-trigger').click(); check($<HTMLDialogElement>('#add-dialog').open, 'Dialog opens'); }
+function open(): void { const button = [...doc().querySelectorAll<HTMLButtonElement>('.add-trigger')].find(node => node.checkVisibility()); check(button, 'Visible add action'); button.click(); check($<HTMLDialogElement>('#add-dialog').open, 'Dialog opens'); }
 function openTrim(): void {
   const trim = $<HTMLDetailsElement>('#trim-options');
   if (!trim.open) $<HTMLElement>('#trim-options > summary').click();
@@ -81,13 +81,29 @@ try {
   open();
   check($<HTMLInputElement>('input[value="local"]').checked, 'Local-first by default');
   check($('#youtube-fields').hidden, 'Online option is secondary');
+  check($('#sound-details').hidden && $('#add-actions').hidden, 'Choose a file before showing naming and saving');
+  check($('#sound-file').checkVisibility(), 'File chooser is the primary visible action');
   const realm = frame.contentWindow as Window & typeof globalThis;
   const transfer = new realm.DataTransfer(); transfer.items.add(wav());
   const fileInput = $<HTMLInputElement>('#sound-file'); fileInput.files = transfer.files;
   fileInput.dispatchEvent(new realm.Event('change', { bubbles: true }));
   await wait(() => Number($<HTMLInputElement>('#local-end').value) > 0, 'media metadata');
   check($<HTMLInputElement>('#sound-name').value === 'reaction', 'Filename suggests a name');
-  input('#sound-name', 'Épico final'); input('#local-start', '1'); input('#local-end', '3');
+  check($('#sound-name').checkVisibility() && $('#save-sound').checkVisibility(), 'Metadata reveals the next actions');
+  check($('#trim-editor').hidden, 'Trimming is optional, not mandatory');
+  check(!$<HTMLDetailsElement>('.personalize').open, 'Color starts out of the way');
+  input('#sound-name', 'Épico final');
+  $('#toggle-trim').click();
+  check($('#toggle-trim').getAttribute('aria-expanded') === 'true', 'Trim toggle announces expansion');
+  input('#trim-start', '1'); input('#trim-end', '3');
+  check($<HTMLInputElement>('#local-start').value === '1' && $<HTMLInputElement>('#local-end').value === '3', 'Visual handles update exact clip boundaries');
+  check($('#media-duration').textContent?.includes('0:02 seleccionados'), 'Selected duration updates immediately');
+  $('#close-dialog').click();
+  check(!$('#discard-prompt').hidden && $<HTMLFormElement>('#add-form').inert, 'Closing a draft asks before discarding');
+  $('#keep-editing').click();
+  check($<HTMLInputElement>('#sound-name').value === 'Épico final' && $<HTMLInputElement>('#local-start').value === '1', 'Continue editing keeps name and clip');
+  $('#preview-clip').click(); $('#preview-clip').click(); await pause();
+  check($('#form-error').hidden, 'Rapid preview pause is not treated as a media error');
   $('#preview-clip').click();
   await wait(() => !$<HTMLVideoElement>('#media-preview').paused, 'preview fragment');
   submit();
@@ -96,10 +112,19 @@ try {
   await reload();
   check(count() === '1' && $('.pad-name').textContent === 'Épico final', 'Clip persists across reload');
   $('.pad').click();
+  $('#play-pause').click(); $('#play-pause').click(); $('#play-pause').click();
+  await pause();
+  check($('#playback-message').textContent === '' && !$('#mobile-transport').hidden, 'Immediate pause during pending play does not become an error');
+  $('#play-pause').click();
   const audio = $<HTMLAudioElement>('#audio-player');
   await wait(() => audio.readyState >= 2 && !audio.paused, 'real trimmed audio playback');
   check(Math.abs(audio.duration - 2) < .05, 'Trimming produced an actual two-second file');
   check(!$('#mobile-transport').hidden, 'Persistent mobile stop control');
+  $('#play-pause').click(); check(audio.paused, 'Compact transport pauses');
+  await wait(() => $('#play-pause').getAttribute('aria-label') === 'Continuar reproducción', 'Pause exposes resume semantics');
+  input('#playback-seek', '1'); check(Math.abs(audio.currentTime - 1) < .05, 'Seek changes real playback position');
+  $('#replay-sound').click(); await wait(() => !audio.paused, 'restart');
+  check(audio.currentTime < .5, 'Replay starts from the beginning');
   $('.stop-all').click(); check(audio.paused && !audio.hasAttribute('src'), 'Stop releases audio');
   $('.favorite-button').click(); await wait(() => $('.favorite-button').getAttribute('aria-pressed') === 'true', 'favorite commit');
   input('#search', 'epico'); check(doc().querySelectorAll('.pad').length === 1, 'Accent-insensitive search');
@@ -163,13 +188,42 @@ try {
   $('.stop-all').click();
   passed.push('Real MP4/AAC video import / local WAV extraction / actual trimmed playback');
 
+  open();
+  const editorRealm = frame.contentWindow as Window & typeof globalThis;
+  const draft = new editorRealm.DataTransfer(); draft.items.add(wav());
+  $<HTMLInputElement>('#sound-file').files = draft.files; $('#sound-file').dispatchEvent(new editorRealm.Event('change'));
+  await wait(() => !$('#sound-details').hidden, 'draft ready');
+  input('#sound-name', 'Nombre propio');
+  const replacement = new editorRealm.DataTransfer(); replacement.items.add(new editorRealm.File([wav()], 'different.wav', { type: 'audio/wav' }));
+  $<HTMLInputElement>('#sound-file').files = replacement.files; $('#sound-file').dispatchEvent(new editorRealm.Event('change'));
+  await wait(() => !$('#sound-details').hidden, 'replacement ready');
+  check($<HTMLInputElement>('#sound-name').value === 'Nombre propio', 'Changing a file preserves a custom name');
+  $('#toggle-trim').click();
+  input('#trim-start', '9.99'); input('#trim-end', '1');
+  check(Number($<HTMLInputElement>('#local-end').value) > Number($<HTMLInputElement>('#local-start').value), 'Handles cannot cross');
+  $('#reset-trim').click();
+  check($<HTMLInputElement>('#local-start').value === '0' && Number($<HTMLInputElement>('#local-end').value) === 10, 'Reset restores full clip');
+  input('#trim-end', '9.95');
+  submit(); await wait(() => !$<HTMLDialogElement>('#add-dialog').open, 'precise trim');
+  $('.pad').click(); await wait(() => $<HTMLAudioElement>('#audio-player').readyState >= 2, 'precise playback');
+  check(Math.abs($<HTMLAudioElement>('#audio-player').duration - 9.95) < .005, 'A 50ms end trim is honored, not treated as full audio');
+  $('.stop-all').click();
+  open();
+  const invalid = new editorRealm.DataTransfer(); invalid.items.add(new editorRealm.File(['html'], 'not-audio.html', { type: 'text/html' }));
+  $<HTMLInputElement>('#sound-file').files = invalid.files; $('#sound-file').dispatchEvent(new editorRealm.Event('change'));
+  check(!$('#form-error').hidden && $('#add-actions').hidden, 'Bad file gives an error without exposing save');
+  $('#close-dialog').click();
+  if (!$<HTMLElement>('#discard-prompt').hidden) $('#confirm-discard').click();
+  check(!$<HTMLDialogElement>('#add-dialog').open, 'Discard returns to collection');
+  passed.push('Progressive import / visual range handles / draft protection / file replacement / precision trimming / player controls');
+
   for (const width of [320, 360, 390, 1280]) {
     frame.style.width = `${width}px`; await pause();
     check(doc().documentElement.scrollWidth <= width, `No overflow at ${width}px: ${[...doc().querySelectorAll<HTMLElement>('body *')].filter(el => el.getBoundingClientRect().right > width).map(el => el.tagName + '.' + el.className + ':' + el.getBoundingClientRect().right).slice(0, 8).join(', ')}`);
     for (const node of doc().querySelectorAll<HTMLElement>('.pad,.favorite-button,.more-button,.add-trigger')) if (node.checkVisibility()) check(node.getBoundingClientRect().height >= 44, '44px targets');
     open(); check($<HTMLDialogElement>('#add-dialog').getBoundingClientRect().right <= width, 'Dialog fits');
     check(parseFloat(frame.contentWindow!.getComputedStyle($('#sound-name')).fontSize) >= 16, 'No small input zoom');
-    $('#cancel-dialog').click();
+    $('#close-dialog').click();
   }
   passed.push('320/360/390/1280px layout / touch targets / input sizing');
   results.dataset.result = 'passed'; results.textContent = `PASS (${passed.length} groups)\n${passed.join('\n')}`;

@@ -45,6 +45,7 @@ export async function readBackup(file: Blob): Promise<Sound[]> {
       const audio = new File([file.slice(offset, offset + item.bytes)], item.fileName.slice(0, 200), { type: item.mime });
       offset += item.bytes;
       sound = createSound({ name: item.name, source: 'local', file: audio });
+      if (sound.source === 'local' && Number.isFinite(item.duration) && item.duration > 0) sound.duration = item.duration;
     } else if (item.source === 'youtube') {
       if (!Number.isSafeInteger(item.start) || item.start < 0 || (item.end !== null && (!Number.isSafeInteger(item.end) || item.end <= item.start))) invalid();
       sound = createSound({ name: item.name, source: 'youtube', url: `https://youtu.be/${item.videoId}`, start: String(item.start), end: item.end === null ? '' : String(item.end) });
