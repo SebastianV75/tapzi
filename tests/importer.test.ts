@@ -100,9 +100,9 @@ test('rejections leave commands and busy state untouched', async () => {
   const f = await fixture();
   try {
     const cases: [unknown, Record<string, string>, number, string][] = [
-      [{ url: 'https://example.com/evil' }, {}, 400, 'Use a YouTube video, Shorts, or youtu.be link.'],
-      [{ url, start: '1;echo' }, {}, 400, 'Use seconds or a time like 0:12.'],
-      [{ url, start: '5', end: '4' }, {}, 400, 'The end must come after the start.'],
+      [{ url: 'https://example.com/evil' }, {}, 400, 'Usá un enlace de YouTube, Shorts o youtu.be.'],
+      [{ url, start: '1;echo' }, {}, 400, 'Usá segundos o un tiempo como 0:12.'],
+      [{ url, start: '5', end: '4' }, {}, 400, 'El final debe ser posterior al inicio.'],
       [{ url, start: 2 }, {}, 400, 'Use JSON with url and optional start/end strings.'],
       [{ url: 2 }, {}, 400, 'Use JSON with url and optional start/end strings.'],
       ['{', {}, 400, 'Send valid JSON.'],

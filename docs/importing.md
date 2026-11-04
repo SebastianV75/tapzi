@@ -1,4 +1,7 @@
-# Import YouTube audio locally
+# Import YouTube audio locally (legacy developer tool)
+
+The standalone app now uses local audio/video files and does not call this endpoint.
+This tool is disabled by default. It is retained for explicitly opted-in local development.
 
 Use only public audio you have permission to download. Imports run on the machine
 running Tapzi's Vite server, not on a static hosting site or in the browser alone.
@@ -11,7 +14,8 @@ preferred package manager. Check yt-dlp's current installation instructions for
 EJS/runtime requirements. No project-local `.tools` installation is assumed.
 The importer enables Node as well as yt-dlp's default Deno runtime.
 
-Run `npm run dev`, or build normally then use `npm run preview`. Both servers
+Run `TAPZI_LOCAL_IMPORT=1 npm run dev`, or build normally then use
+`TAPZI_LOCAL_IMPORT=1 npm run preview`. With this explicit opt-in, both servers
 provide the endpoint; serving `dist` alone does not. No cookies, sign-in, or
 account/restriction bypass is supported. This is not an offline downloader:
 YouTube and installed tools must work from the server machine.
@@ -62,8 +66,8 @@ is sampled, not an OS disk quota, so a burst may briefly exceed the limit before
 termination. Output size is checked before reading or returning it. Subprocess
 output is capped at 1 MiB and retries are disabled. Each request uses isolated
 system-temp files, removed before the response, including failure/cancellation.
-Nothing is persisted in server application storage. The browser integration owns
-saving returned audio to its existing local storage flow.
+Nothing is persisted in server application storage. The previous browser integration in `src/import-audio.ts` is retained but is not
+imported by the standalone app. A developer client must explicitly save returned audio.
 
 ## What has actually worked
 

@@ -77,157 +77,100 @@ function wav(): File {
 }
 try {
   await ready();
-  check(count() === '0' && !$('#empty').hidden, 'Fresh browser has an empty board');
+  check(count() === '0' && !$('#empty').hidden, 'Empty first run');
   open();
-  check(doc().activeElement?.id === 'sound-name', 'Dialog places focus in the name');
-  check($('.add-trigger').checkVisibility(), 'First add trigger is visible and actionable');
-  check(!$<HTMLDetailsElement>('#download-details').open, 'Secondary download explanation starts collapsed');
-  check($('#download-audio').checkVisibility() && $<HTMLInputElement>('#download-audio').checked, 'Default download choice stays visible');
-  check($('#download-help').checkVisibility() && $('#download-help').textContent!.includes('yt-dlp and FFmpeg'), 'Local tool requirement stays visible');
-  $('#download-details > summary').click();
-  check($('#download-explanation').checkVisibility(), 'Download explanation is accessible on opening disclosure');
-  $('#download-details > summary').click();
-  check(!$<HTMLDetailsElement>('#trim-options').open && !$('#clip-start').checkVisibility(), 'Optional trim fields start collapsed');
-  openTrim();
-  $('#trim-options > summary').click();
-  check(!$('#clip-end').checkVisibility(), 'Trim fields can be collapsed again');
-  doc().querySelector<HTMLInputElement>('#download-audio')?.click();
-  input('#sound-name', 'Épico final');
-  input('#sound-url', 'https://youtube.com.evil.test/watch?v=dQw4w9WgXcQ');
-  submit();
-  check($('#form-error').textContent === 'Use a YouTube video, Shorts, or youtu.be link.', 'Invalid host has exact visible error');
-  check(count() === '0' && doc().querySelectorAll('.sound-card').length === 0, 'Rejected link leaves board and count unchanged');
-  $('#cancel-dialog').click();
-  await reload();
-  check(count() === '0', 'Rejected link was not persisted');
-  open();
-  doc().querySelector<HTMLInputElement>('#download-audio')?.click();
-  input('#sound-name', 'Épico final');
-  input('#sound-url', 'https://youtu.be/dQw4w9WgXcQ');
-  openTrim();
-  input('#clip-start', '0:03'); input('#clip-end', '0:08');
-  submit();
-  await wait(() => !$<HTMLDialogElement>('#add-dialog').open, 'save YouTube clip');
-  check(count() === '1' && $('.pad-name').textContent === 'Épico final', 'YouTube clip added with its name');
-  check($('.pad-meta').textContent === 'YouTube / 0:03–0:08', 'Clip bounds shown');
-  $('.favorite-button').click();
-  await wait(() => $('.favorite-button').getAttribute('aria-pressed') === 'true', 'favorite commit');
-  await reload();
-  check(count() === '1' && $('.favorite-button').getAttribute('aria-pressed') === 'true', 'Clip and favorite survive reload');
-  input('#search', 'epico');
-  check(doc().querySelectorAll('.pad').length === 1, 'Accent-insensitive search');
-  input('#search', 'missing');
-  check(!$('#no-results').hidden && count() === '1', 'Search empty state retains total');
-  $('#clear-filter').click();
-  passed.push('YouTube add / validation / persistence / favorites / search');
-
-  fakeYouTube();
-  $('.pad').click();
-  await wait(() => clips.length === 1, 'YouTube adapter ready');
-  check(JSON.stringify(clips[0]) === JSON.stringify({ videoId: 'dQw4w9WgXcQ', startSeconds: 3, endSeconds: 8 }), 'Official player receives exact clip bounds');
-  check(lastOptions?.playerVars.playsinline === 1 && lastOptions.playerVars.controls === 1, 'Inline official controls enabled');
-  const playerRect = $('#youtube-player').getBoundingClientRect();
-  check(!$('#youtube-wrap').hidden && playerRect.width >= 200 && playerRect.height >= 200, 'YouTube player remains visibly sized');
-  check($('#player-state').textContent === 'Playing', 'Playback status is visible');
-  $('.stop-all').click();
-  check(destroys === 1 && $('#youtube-wrap').hidden && !doc().querySelector('.is-playing'), 'Stop removes video and active state');
-  $('.pad').click();
-  await wait(() => clips.length === 2, 'second YouTube start');
-  lastOptions!.events.onError();
-  check($('#player-state').textContent === 'Could not play' && $('#playback-message').textContent!.includes('blocked from embedding'), 'Embed errors are explained without losing the clip');
-  check(count() === '1', 'Playback error leaves saved collection unchanged');
-  passed.push('YouTube adapter / visible player / stop / embed errors (test double)');
-
-  open();
-  input('#sound-name', 'Local reaction');
-  $<HTMLInputElement>('input[value="local"]').click();
+  check($<HTMLInputElement>('input[value="local"]').checked, 'Local-first by default');
+  check($('#youtube-fields').hidden, 'Online option is secondary');
   const realm = frame.contentWindow as Window & typeof globalThis;
-  const transfer = new realm.DataTransfer();
-  transfer.items.add(wav());
-  $<HTMLInputElement>('#sound-file').files = transfer.files;
+  const transfer = new realm.DataTransfer(); transfer.items.add(wav());
+  const fileInput = $<HTMLInputElement>('#sound-file'); fileInput.files = transfer.files;
+  fileInput.dispatchEvent(new realm.Event('change', { bubbles: true }));
+  await wait(() => Number($<HTMLInputElement>('#local-end').value) > 0, 'media metadata');
+  check($<HTMLInputElement>('#sound-name').value === 'reaction', 'Filename suggests a name');
+  input('#sound-name', 'Épico final'); input('#local-start', '1'); input('#local-end', '3');
+  $('#preview-clip').click();
+  await wait(() => !$<HTMLVideoElement>('#media-preview').paused, 'preview fragment');
   submit();
-  await wait(() => !$<HTMLDialogElement>('#add-dialog').open, 'local save');
-  check(count() === '2', 'Audio file added');
+  await wait(() => !$<HTMLDialogElement>('#add-dialog').open, 'trim and persist real WAV');
+  check(count() === '1', 'Local clip saved');
   await reload();
-  check(count() === '2', 'Local audio survives reload');
-  const localPad = [...doc().querySelectorAll<HTMLButtonElement>('.pad')].find(pad => pad.textContent?.includes('Local reaction'))!;
-  localPad.click();
+  check(count() === '1' && $('.pad-name').textContent === 'Épico final', 'Clip persists across reload');
+  $('.pad').click();
   const audio = $<HTMLAudioElement>('#audio-player');
-  await wait(() => audio.readyState >= 2 && !audio.paused, 'real local audio playback');
-  check(!audio.hidden && audio.src.startsWith('blob:'), 'Local audio plays from browser storage, not a server');
-  $('.stop-all').click();
-  check(audio.paused && !audio.hasAttribute('src') && audio.hidden, 'Stop clears local source');
-  $('#favorite-filter').click();
-  check(doc().querySelectorAll('.pad').length === 1 && $('.pad-name').textContent === 'Épico final', 'Favorites filter excludes unfavorited local sound');
-  $('#all-filter').click();
-  passed.push('Local WAV upload / persistent Blob / real playback / stop');
+  await wait(() => audio.readyState >= 2 && !audio.paused, 'real trimmed audio playback');
+  check(Math.abs(audio.duration - 2) < .05, 'Trimming produced an actual two-second file');
+  check(!$('#mobile-transport').hidden, 'Persistent mobile stop control');
+  $('.stop-all').click(); check(audio.paused && !audio.hasAttribute('src'), 'Stop releases audio');
+  $('.favorite-button').click(); await wait(() => $('.favorite-button').getAttribute('aria-pressed') === 'true', 'favorite commit');
+  input('#search', 'epico'); check(doc().querySelectorAll('.pad').length === 1, 'Accent-insensitive search');
+  input('#search', 'absent'); check(!$('#no-results').hidden, 'No results'); $('#clear-filter').click();
+  passed.push('Local import / actual audio trim / preview / persistence / playback / favorites / search');
 
-  check(doc().documentElement.scrollWidth <= 360, 'No horizontal overflow at 360px');
-  for (const button of doc().querySelectorAll<HTMLButtonElement>('.pad, .favorite-button, .add-trigger')) {
-    if (button.getClientRects().length) check(button.getBoundingClientRect().height >= 44, 'Visible touch targets are at least 44px');
-  }
-  frame.style.width = '390px';
-  await pause();
-  check(doc().documentElement.scrollWidth <= 390, 'No horizontal overflow at 390px');
-  frame.style.width = '360px';
-  open();
-  check($<HTMLDialogElement>('#add-dialog').getBoundingClientRect().right <= 360, 'Dialog fits mobile viewport');
-  openTrim();
-  $('#download-details > summary').click();
-  for (const control of doc().querySelectorAll<HTMLElement>('#add-dialog button, #add-dialog summary, .source-options label, .import-option, .field input')) {
-    if (control.checkVisibility()) check(control.getBoundingClientRect().height >= 44, 'Visible form controls have 44px touch targets');
-  }
-  for (const field of doc().querySelectorAll<HTMLInputElement>('#add-dialog .field input')) {
-    if (field.checkVisibility()) check(parseFloat(frame.contentWindow!.getComputedStyle(field).fontSize) >= 16, 'Visible text inputs avoid mobile zoom');
-  }
-  $('#cancel-dialog').click();
-  frame.style.width = '1280px';
-  await pause();
-  check(doc().documentElement.scrollWidth <= 1280, 'No desktop horizontal overflow');
-  passed.push('360px and 1280px layout / touch targets / dialog focus');
+  $('.more-button').click(); input('#edit-name', '<b>Mi sonido</b>');
+  $<HTMLInputElement>('input[name="edit-color"][value="mint"]').click();
+  $<HTMLFormElement>('#edit-form').requestSubmit();
+  await wait(() => !$<HTMLDialogElement>('#edit-dialog').open, 'edit save');
+  check($('.pad-name').textContent === '<b>Mi sonido</b>' && !doc().querySelector('.pad-name b'), 'Names are text, not HTML');
+  check($('.sound-card').dataset.color === 'mint', 'Color saved');
+  $('.more-button').click(); $('#delete-sound').click();
+  await wait(() => count() === '0', 'delete commit');
+  $('#undo-delete').click(); await wait(() => count() === '1', 'undo commit');
+  await reload(); check(count() === '1' && $('.sound-card').dataset.color === 'mint', 'Undo and edit persist');
+  passed.push('Rename / color / safe text / delete / undo');
+
+  open(); $<HTMLInputElement>('input[value="youtube"]').click(); input('#sound-name', 'Online'); input('#sound-url', 'https://youtube.com.evil.test/watch?v=dQw4w9WgXcQ'); submit();
+  await wait(() => !$('#form-error').hidden, 'invalid URL error');
+  check(count() === '1', 'Invalid link did not persist');
+  input('#sound-url', 'https://youtu.be/dQw4w9WgXcQ'); openTrim(); input('#clip-start', '3'); input('#clip-end', '8'); submit();
+  await wait(() => !$<HTMLDialogElement>('#add-dialog').open, 'save online link');
+  fakeYouTube(); $('.pad').click(); await wait(() => clips.length === 1, 'YT adapter');
+  check(JSON.stringify(clips[0]) === JSON.stringify({ videoId: 'dQw4w9WgXcQ', startSeconds: 3, endSeconds: 8 }), 'Official player gets bounds');
+  check(!$('#youtube-wrap').hidden, 'Online player is visible');
+  lastOptions!.events.onError(); check($('#playback-message').textContent!.includes('no permite'), 'Online restrictions explained');
+  check(count() === '2', 'Playback error leaves collection intact');
+  passed.push('Optional online link / host validation / player bounds / embed error (test double)');
+
+  $('#settings-trigger').click();
+  const currentRealm = frame.contentWindow as Window & typeof globalThis;
+  // Exercise real backup encode/decode and the actual file-input restore transaction.
+  const modules = await (currentRealm.eval(`Promise.all([import('/src/backup.ts'), import('/src/storage.ts')])`) as Promise<[typeof import('../src/backup.ts'), typeof import('../src/storage.ts')]>);
+  const original = await modules[1].allSounds(); const backup = modules[0].makeBackup(original);
+  await modules[1].removeSound(original[0].id);
+  const restore = new currentRealm.DataTransfer(); restore.items.add(new currentRealm.File([backup], 'collection.tapzi'));
+  $<HTMLInputElement>('#backup-file').files = restore.files; $('#backup-file').dispatchEvent(new currentRealm.Event('change'));
+  await wait(() => $('#settings-message').textContent?.includes('sonidos agregados'), 'restore');
+  check((await modules[1].allSounds()).length === 2, 'Restore adds missing and skips existing IDs');
+  const bad = new currentRealm.DataTransfer(); bad.items.add(new currentRealm.File(['invalid'], 'bad.tapzi'));
+  $<HTMLInputElement>('#backup-file').files = bad.files; $('#backup-file').dispatchEvent(new currentRealm.Event('change'));
+  await wait(() => $('#settings-message').textContent?.includes('no es válida'), 'corrupt backup');
+  check((await modules[1].allSounds()).length === 2, 'Corrupt backup preserves existing data');
+  $('[data-close="settings-dialog"]').click(); await reload(); check(count() === '2', 'Restored collection persists');
+  passed.push('Backup roundtrip / atomic merge / duplicate protection / corrupt file rejection');
 
   open();
-  check(doc().querySelector<HTMLInputElement>('#download-audio')?.checked, 'YouTube audio download is the default for new additions');
-  const importRealm = frame.contentWindow as Window & typeof globalThis;
-  const originalFetch = importRealm.fetch.bind(importRealm);
-  const requests: { url: string; start?: string; end?: string }[] = [];
-  importRealm.fetch = async (resource, init) => {
-    if (String(resource) !== '/api/import-audio') return originalFetch(resource, init);
-    check(init?.method === 'POST', 'Audio import uses POST');
-    requests.push(JSON.parse(String(init.body)));
-    return new importRealm.Response(wav(), { headers: { 'Content-Type': 'audio/mpeg' } });
-  };
-  input('#sound-name', 'Imported reaction');
-  input('#sound-url', 'https://youtu.be/fTCbikSOYBg');
-  openTrim();
-  input('#clip-start', '0:02'); input('#clip-end', '0:05');
-  submit();
-  await wait(() => !$<HTMLDialogElement>('#add-dialog').open, 'download audio and save');
-  check(count() === '3', 'Successful import adds one sound');
-  check(JSON.stringify(requests[0]) === JSON.stringify({ url: 'https://www.youtube.com/watch?v=fTCbikSOYBg', start: '2', end: '5' }), 'Importer receives canonical link and normalized times');
-  check($('.pad-name').textContent === 'Imported reaction' && $('.pad-meta').textContent === 'Audio / on device', 'Imported audio is a local sound, not another embed');
-  await reload();
-  check(count() === '3', 'Imported audio persists after reload');
-  const importedPad = [...doc().querySelectorAll<HTMLButtonElement>('.pad')].find(pad => pad.textContent?.includes('Imported reaction'))!;
-  importedPad.click();
-  await wait(() => !$<HTMLAudioElement>('#audio-player').paused, 'play persisted imported audio');
-  check($('#youtube-wrap').hidden && !$('#audio-player').hidden, 'Imported sound plays without YouTube iframe');
+  const videoRealm = frame.contentWindow as Window & typeof globalThis;
+  const videoBytes = await (await fetch('/tests/fixtures/tone.mp4')).arrayBuffer();
+  const videoTransfer = new videoRealm.DataTransfer(); videoTransfer.items.add(new videoRealm.File([videoBytes], 'video.mp4', { type: 'video/mp4' }));
+  $<HTMLInputElement>('#sound-file').files = videoTransfer.files;
+  $('#sound-file').dispatchEvent(new videoRealm.Event('change', { bubbles: true }));
+  await wait(() => Number($<HTMLInputElement>('#local-end').value) > 0, 'MP4 metadata');
+  input('#local-start', '0.5'); input('#local-end', '1.5'); input('#sound-name', 'Extracted video'); submit();
+  await wait(() => !$<HTMLDialogElement>('#add-dialog').open, 'MP4 AAC audio extraction');
+  check(count() === '3', 'Video becomes one local sound');
+  $('.pad').click();
+  await wait(() => !$<HTMLAudioElement>('#audio-player').paused && $<HTMLAudioElement>('#audio-player').readyState >= 2, 'extracted video playback');
+  check(Math.abs($<HTMLAudioElement>('#audio-player').duration - 1) < .05, 'Extracted video is exactly the chosen audio fragment');
   $('.stop-all').click();
-  const newRealm = frame.contentWindow as Window & typeof globalThis;
-  const realFetch = newRealm.fetch.bind(newRealm);
-  newRealm.fetch = async (resource, init) => String(resource) === '/api/import-audio'
-    ? new newRealm.Response(JSON.stringify({ error: 'YouTube blocked this request; no audio was saved.' }), { status: 502, headers: { 'Content-Type': 'application/json' } })
-    : realFetch(resource, init);
-  open(); input('#sound-name', 'Rejected import'); input('#sound-url', 'https://youtu.be/fTCbikSOYBg'); submit();
-  await wait(() => !$('#form-error').hidden, 'import error displayed');
-  check($('#form-error').textContent === 'YouTube blocked this request; no audio was saved.', 'Exact backend error is visible');
-  check(count() === '3' && $<HTMLDialogElement>('#add-dialog').open && !$<HTMLButtonElement>('#save-sound').disabled, 'Failed import changes no count and permits retry');
-  $('#cancel-dialog').click(); await reload();
-  check(count() === '3' && ![...doc().querySelectorAll('.pad-name')].some(pad => pad.textContent === 'Rejected import'), 'Failed import did not persist a record');
-  passed.push('Default yt-dlp import / persisted local playback / failed import leaves data unchanged');
-  results.dataset.result = 'passed';
-  results.textContent = `PASS (${passed.length} groups)\n${passed.join('\n')}`;
-} catch (error) {
-  results.dataset.result = 'failed';
-  results.textContent = `FAIL\n${error instanceof Error ? error.stack : String(error)}\nPassed: ${passed.join(', ')}`;
-}
+  passed.push('Real MP4/AAC video import / local WAV extraction / actual trimmed playback');
+
+  for (const width of [320, 360, 390, 1280]) {
+    frame.style.width = `${width}px`; await pause();
+    check(doc().documentElement.scrollWidth <= width, `No overflow at ${width}px: ${[...doc().querySelectorAll<HTMLElement>('body *')].filter(el => el.getBoundingClientRect().right > width).map(el => el.tagName + '.' + el.className + ':' + el.getBoundingClientRect().right).slice(0, 8).join(', ')}`);
+    for (const node of doc().querySelectorAll<HTMLElement>('.pad,.favorite-button,.more-button,.add-trigger')) if (node.checkVisibility()) check(node.getBoundingClientRect().height >= 44, '44px targets');
+    open(); check($<HTMLDialogElement>('#add-dialog').getBoundingClientRect().right <= width, 'Dialog fits');
+    check(parseFloat(frame.contentWindow!.getComputedStyle($('#sound-name')).fontSize) >= 16, 'No small input zoom');
+    $('#cancel-dialog').click();
+  }
+  passed.push('320/360/390/1280px layout / touch targets / input sizing');
+  results.dataset.result = 'passed'; results.textContent = `PASS (${passed.length} groups)\n${passed.join('\n')}`;
+} catch (error) { results.dataset.result = 'failed'; results.textContent = `FAIL\n${error instanceof Error ? error.stack : String(error)}\nPassed: ${passed.join(', ')}`; }

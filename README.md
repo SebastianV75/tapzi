@@ -1,64 +1,90 @@
 # Tapzi
 
-A personal, mobile-first soundboard for YouTube audio imports, online clips, and local files. Built with strict TypeScript, Vite, native browser controls, and IndexedDB. A small local importer uses yt-dlp and FFmpeg; no account or hosted application backend is required.
+Tu botonera personal de bolsillo. Web estática en TypeScript: **sin cuentas, API de conversión, servidor de audio ni suscripciones**. Diseñada para instalar en el iPhone y reproducir la colección sin conexión.
 
-## Run locally
+## Usarla
 
-Requires Node.js 22.18+ and npm. To download from YouTube, also install current **yt-dlp with EJS**, a supported JavaScript runtime, and **FFmpeg/ffprobe** on the machine running Tapzi. Your successful terminal download is the prerequisite check. See [local import setup and limits](docs/importing.md).
+1. Tocá **Agregar → Audio o video** y elegí un archivo del teléfono.
+2. Escuchalo, elegí el inicio y el final, poné un nombre y un color.
+3. Guardalo. Tocá el botón para reproducir; tocá de nuevo para detener.
+4. La estrella lo agrega a favoritos; **···** permite editar, compartir el audio o eliminarlo con opción de deshacer.
+5. En **ajustes**, guardá una copia `.tapzi`. Incluye audios, nombres, colores y favoritos. Restaurar agrega lo que falta sin reemplazar los sonidos existentes.
+
+La botonera comienza vacía. **Probar con tres sonidos** crea tres tonos originales localmente; no descarga contenido de terceros.
+
+**YouTube** es una opción online separada: guarda un enlace y usa el reproductor visible. No descarga audio, necesita internet y algunos videos restringen su reproducción. Los sonidos guardados en versiones anteriores se conservan.
+
+## Ejecutar y verificar
+
+Node.js 22.18+ y npm:
 
 ```sh
 npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite (normally `http://127.0.0.1:5173`). Imports are loopback-only by default. For phone imports on a **trusted** LAN, explicitly opt in with `TAPZI_ALLOW_LAN_IMPORT=1 npm run dev -- --host 0.0.0.0`, then open your computer's LAN address. Keep that computer running while importing; playback of already-stored audio does not contact YouTube. Do not expose this development/download server to the internet.
-
-## Add and play a sound
-
-1. Choose **Add a sound** and enter a name.
-2. Paste an HTTPS YouTube video link, or switch to **Audio file** and choose a file up to 25 MB.
-3. For YouTube, open **Trim audio (optional)** to set the start and optional end in seconds or `m:ss`. URL timestamps are not imported automatically; use these explicit fields.
-4. **Download audio to this device** is checked by default. Open **About downloads & online links** for playback requirements and restrictions. Saving downloads/converts the selected audio on your computer and stores the returned file in this browser. Wait for it to finish, then tap its pad.
-5. To keep using the official visible YouTube player instead, uncheck the download option before saving. Existing saved links are unchanged. Tap a pad again or use **Stop all** to stop playback.
-
-Downloads need permission to use the content and may fail because of YouTube restrictions. A failed import displays the reason and adds no sound; it does not silently save another online link.
-
-Star sounds for the Favorites filter. Search ignores capitalization and accents. The board starts empty; there are no placeholder sounds.
-
-## Storage and playback boundaries
-
-| Topic | Behavior |
-| --- | --- |
-| YouTube downloads | Local yt-dlp + FFmpeg importer creates an MP3, returned to this browser's IndexedDB. Internet and working server-machine tools are required during import. Up to 600 seconds and 25 MiB; one import at a time. Temporary server files are removed before responding. |
-| YouTube links | Optional official visible player, online only. Existing links are preserved; videos may have ads, embedding restrictions, or regional limits. |
-| Mobile playback | Imported/uploaded audio uses the native audio element. Saved online links may require another tap on the official Play button and depend on the network. |
-| Local files | Uploaded and imported audio Blobs are stored in IndexedDB and played from object URLs. Uploads never go to the server. Imported audio passes through the local importer only during download. Format support depends on the browser. |
-| Persistence | Sounds and favorites survive a reload on the same browser and origin. Clearing site data, private browsing cleanup, or browser storage eviction can remove the collection. There is no backup or sync yet. |
-| Privacy | No analytics or account. Importing contacts YouTube from the server machine. Selecting a saved online-link pad contacts YouTube from the browser. Merely saving a link with downloading unchecked does not load the external player. No account-cookie workflow is provided. |
-| Offline | Local files need no network once the app is open. The application shell has no service worker or offline-reload guarantee. |
-| Home screen | A web manifest provides standalone launch metadata. Installation behavior depends on the browser; this is not a native mobile package. |
-
-## Check and build
+Para la versión instalable y offline:
 
 ```sh
-npm test                 # validation, local HTTP importer, guards, and subprocess tests
-npm run typecheck        # strict TypeScript, including browser test source
-npm run test:browser     # isolated Chromium UI checks
-npm run build            # typecheck + production bundle in dist/
-npm run preview          # serve production bundle + local importer
+npm run build
+npm run preview
 ```
 
-Browser checks require an installed `chromium` executable, or `CHROMIUM=/path/to/chrome`. They create a fresh profile, exercise public UI controls, and remove the profile afterward. Reports and a mobile screenshot go into ignored `.cache/`. The online YouTube adapter and import response use deterministic test doubles; local and imported-Blob playback use the real browser audio element with synthetic WAV bytes. Backend tests use an isolated fake executable, never YouTube or your data. This does **not** prove new live downloads, audio output, Safari behavior, or interaction on physical mobile hardware. The user's supplied terminal evidence separately confirms successful local yt-dlp conversion for the reported clip.
+El modo offline se habilita en la compilación de producción, no en el servidor de desarrollo.
 
-Before relying on it on a phone: try an embeddable video, check the clip bounds, try the extra native Play tap, switch between YouTube and a local file, and stop playback. These are device acceptance checks, not claims established by desktop tests.
+```sh
+npm test                 # validación, backups, WAV y pruebas del importador heredado
+npm run typecheck
+npm run build
+npm run test:browser     # requiere el build y Chromium
+```
 
-## Visual direction
+`CHROMIUM=/ruta/a/chromium` permite elegir el ejecutable. Las pruebas usan perfiles descartables, archivos sintéticos y un servidor local temporal. Verifican recorte real de WAV, extracción de audio AAC de un MP4, reproducción, persistencia, edición, borrado/deshacer, restauración, protección contra duplicados, y tamaños de 320 a 1280 px. El test de producción abandona la página y vuelve a abrirla con la red desactivada, verificando reproducción desde IndexedDB. YouTube usa un doble de prueba; no hay conversiones ni solicitudes a proveedores externos durante los tests.
 
-Pond-inspired pale blue surfaces, serif headings, technical outlines, mono numbering, and restrained lavender accents. A pocket sampler rather than an admin dashboard: the pads are the primary interaction. Touch targets, visible keyboard focus, native dialog behavior, and immediate press feedback take precedence over animation.
+## Publicar sin backend
 
-References requested by the user:
+El resultado completo está en **`dist/`**. Publicá su contenido en la raíz de cualquier alojamiento estático con **HTTPS**. No requiere Node, Docker, Coolify, Dokploy, variables secretas o una base de datos en el alojamiento. El sitio se necesita para la primera apertura y las actualizaciones; después de «Lista sin conexión», los audios guardados y la app funcionan offline.
 
-- [Pond Linux by Butterfly](https://www.butterfly.so/pond): aesthetic reference only; no proprietary fonts, illustrations, or branding copied.
-- [Unslop by Damir Sokolovsky / @heydamir](https://github.com/heydamir/unslop), CC BY 4.0: visual design guidance.
-- UI Skills and Emil Kowalski design-engineering guidance: interaction, accessibility, mobile behavior, and restraint.
-- [Lucide](https://lucide.dev), ISC license: inline line-icon paths. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+- Servir `.js` con tipo JavaScript y `.webmanifest` como JSON/manifest.
+- Evitar caché prolongada para `sw.js` e `index.html`; los archivos en `assets/` tienen nombres con hash y pueden usar caché inmutable.
+- Publicar la carpeta completa de manera atómica. No agregar un fallback HTML para archivos JS faltantes.
+- Esta configuración usa la raíz `/`, no un subdirectorio.
+- No abrir `index.html` con `file://`. En el iPhone, HTTP por una IP local no habilita service workers; se necesita HTTPS. `localhost` sirve para las pruebas de escritorio.
+
+No se ha publicado una nueva URL ni contratado servicios como parte de esta entrega.
+
+## Instalar en iPhone
+
+1. Abrí la URL HTTPS en Safari.
+2. **Compartir → Agregar a pantalla de inicio → Agregar**.
+3. Abrí Tapzi desde el icono y esperá **Lista sin conexión**.
+4. Importá tus sonidos allí. Para mover una colección que ya estaba en Safari, exportá y restaurá una copia desde ajustes.
+5. Probá modo avión: cerrá Tapzi, volvé a abrirla y reproducí un sonido local.
+
+El almacenamiento pertenece al navegador/app instalada y al origen. iOS puede eliminar datos bajo presión de espacio; borrar datos del sitio también borra la colección. La app solicita persistencia cuando el navegador lo permite, pero **una copia en Archivos es el respaldo durable**. No hay sincronización automática.
+
+## Archivos y límites
+
+- Entradas de audio/video: hasta 50 MB. Audios guardados: hasta 25 MB por sonido.
+- Un audio completo compatible se conserva sin conversión. Recortes y videos se decodifican en el dispositivo y se guardan como WAV, hasta 120 segundos; el archivo fuente para conversión debe durar como máximo 10 minutos.
+- Soporte de formatos según el navegador: MP3, WAV, M4A y MP4 con AAC son los candidatos principales. Un contenedor de video no garantiza que su códec esté soportado. Un fallo muestra un mensaje y no guarda un registro incompleto.
+- Backups: hasta 200 MB y 1000 sonidos. Formato binario versionado, sin base64 ni descompresión. Se valida antes de una única transacción de restauración.
+- El service worker solo guarda los archivos de la interfaz. Los audios viven en IndexedDB; no se cachean YouTube ni APIs.
+- Las actualizaciones se anuncian y se aplican cuando no hay reproducción ni editores abiertos. No borran la colección.
+
+**Pendiente de aceptación física:** Safari/iPhone, audio audible, hoja de compartir/Archivos, instalación y formatos de los videos reales del usuario. Las pruebas de Chromium no sustituyen esa comprobación.
+
+## Estructura
+
+- `src/app.ts`: interfaz, importación local, editor y gestión de colección.
+- `src/media.ts`: límites, extracción/recorte con Web Audio y codificador WAV.
+- `src/storage.ts`: IndexedDB y restauración atómica.
+- `src/backup.ts`: formato `.tapzi`, validación y empaquetado.
+- `src/player.ts`: reproducción local y reproductor online opcional.
+- `src/offline.ts`, `vite.config.ts`: instalación, actualizaciones y service worker generado.
+
+El importador anterior con yt-dlp se conserva como herramienta de desarrollo **desactivada por defecto**. No forma parte del flujo de la app ni del bundle estático. Su documentación histórica está en [docs/importing.md](docs/importing.md).
+
+## Dirección visual
+
+Azul suave, lavanda, tipografía serif y botones de sampler. Basada en las referencias elegidas por el usuario: [Pond Linux](https://www.butterfly.so/pond), [Unslop](https://github.com/heydamir/unslop), UI Skills y Emil Kowalski. Iconos [Lucide](https://lucide.dev), licencia ISC; ver [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

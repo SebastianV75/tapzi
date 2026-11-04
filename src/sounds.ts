@@ -1,7 +1,10 @@
 const VIDEO_ID = /^[a-zA-Z0-9_-]{11}$/;
 export const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
+export const COLORS = ['lavender', 'peach', 'mint', 'blue'] as const;
+export type SoundColor = typeof COLORS[number];
 interface SoundBase {
+  color?: SoundColor;
   id: string;
   name: string;
   favorite: boolean;
@@ -32,8 +35,8 @@ export interface SoundInput {
 
 export function youtubeId(value: string): string {
   let url: URL;
-  try { url = new URL(value); } catch { throw new Error('Paste a valid YouTube link.'); }
-  if (url.protocol !== 'https:') throw new Error('Use a secure https:// YouTube link.');
+  try { url = new URL(value); } catch { throw new Error('Pegá un enlace válido de YouTube.'); }
+  if (url.protocol !== 'https:') throw new Error('Usá un enlace de YouTube que empiece con https://.');
   const host = url.hostname;
   let id: string | null | undefined;
   if (host === 'youtu.be') id = url.pathname.slice(1);
@@ -41,7 +44,7 @@ export function youtubeId(value: string): string {
     const parts = url.pathname.split('/');
     id = url.pathname === '/watch' ? url.searchParams.get('v') : ['shorts', 'embed', 'live'].includes(parts[1]) ? parts[2] : null;
   }
-  if (!id || !VIDEO_ID.test(id)) throw new Error('Use a YouTube video, Shorts, or youtu.be link.');
+  if (!id || !VIDEO_ID.test(id)) throw new Error('Usá un enlace de YouTube, Shorts o youtu.be.');
   return id;
 }
 
@@ -50,9 +53,9 @@ function seconds(value: string | undefined, fallback: null): number | null;
 function seconds(value: string | undefined, fallback: number | null): number | null {
   if (value === '' || value == null) return fallback;
   const text = value.trim();
-  if (!/^\d+(?::[0-5]\d){0,2}$/.test(text)) throw new Error('Use seconds or a time like 0:12.');
+  if (!/^\d+(?::[0-5]\d){0,2}$/.test(text)) throw new Error('Usá segundos o un tiempo como 0:12.');
   const result = text.split(':').reduce((sum, part) => sum * 60 + Number(part), 0);
-  if (!Number.isSafeInteger(result)) throw new Error('That time is too large.');
+  if (!Number.isSafeInteger(result)) throw new Error('Ese tiempo es demasiado grande.');
   return result;
 }
 
@@ -68,22 +71,22 @@ function soundId(): string {
 
 export function createSound(input: SoundInput): Sound {
   const name = input.name.trim();
-  if (!name || name.length > 60) throw new Error('Give your sound a name (up to 60 characters).');
+  if (!name || name.length > 60) throw new Error('Poné un nombre de hasta 60 caracteres.');
   const base: SoundBase = { id: soundId(), name, favorite: false, createdAt: Date.now() };
   if (input.source === 'youtube') {
     const videoId = youtubeId(input.url ?? '');
     const start = seconds(input.start, 0);
     const end = seconds(input.end, null);
-    if (end !== null && end <= start) throw new Error('The end must come after the start.');
+    if (end !== null && end <= start) throw new Error('El final debe ser posterior al inicio.');
     return { ...base, source: 'youtube', videoId, start, end };
   }
   if (input.source === 'local') {
     const file = input.file;
-    if (!(file instanceof Blob) || !file.type.startsWith('audio/') || !file.size) throw new Error('Choose a non-empty audio file, such as MP3, WAV, or M4A.');
-    if (file.size > MAX_AUDIO_BYTES) throw new Error('Choose an audio file up to 25 MB.');
+    if (!(file instanceof Blob) || !file.type.startsWith('audio/') || !file.size) throw new Error('Elegí un archivo de audio, como MP3, WAV o M4A.');
+    if (file.size > MAX_AUDIO_BYTES) throw new Error('Elegí un audio de hasta 25 MB.');
     return { ...base, source: 'local', blob: file, fileName: file.name, start: 0, end: null };
   }
-  throw new Error('Choose YouTube or an audio file.');
+  throw new Error('Elegí YouTube o un archivo de audio.');
 }
 
 export function matchesSound(sound: Pick<Sound, 'name'>, query: string): boolean {

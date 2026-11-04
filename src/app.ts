@@ -1,199 +1,254 @@
-import { createSound, matchesSound, formatTime } from './sounds.ts';
-import type { Sound } from './sounds.ts';
-import { allSounds, saveSound } from './storage.ts';
+import { COLORS, createSound, matchesSound, formatTime } from './sounds.ts';
+import type { Sound, SoundColor } from './sounds.ts';
+import { allSounds, saveSound, removeSound, restoreSounds } from './storage.ts';
 import { createPlayer } from './player.ts';
-import { downloadSound } from './import-audio.ts';
+import { isVideo, prepareAudio, validateMedia, clipRange, encodeWav } from './media.ts';
+import { makeBackup, readBackup } from './backup.ts';
+import { setupOffline } from './offline.ts';
 
 function $<T extends HTMLElement = HTMLElement>(selector: string): T {
   const element = document.querySelector<T>(selector);
   if (!element) throw new Error(`Missing interface element: ${selector}`);
   return element;
 }
-const errorMessage = (error: unknown): string => error instanceof Error ? error.message : 'Something went wrong. Try again.';
-const source = (): string => $<HTMLInputElement>('input[name="source"]:checked').value;
+const message = (error: unknown): string => error instanceof Error ? error.message : 'Algo salió mal. Intentá otra vez.';
 const dialog = $<HTMLDialogElement>('#add-dialog');
 const form = $<HTMLFormElement>('#add-form');
+const editDialog = $<HTMLDialogElement>('#edit-dialog');
+const settings = $<HTMLDialogElement>('#settings-dialog');
+const preview = $<HTMLVideoElement>('#media-preview');
 const search = $<HTMLInputElement>('#search');
+const input = (id: string): HTMLInputElement => $<HTMLInputElement>(id);
+const source = (): string => input('input[name="source"]:checked').value;
 let sounds: Sound[] = [];
 let favoritesOnly = false;
 let activeId: string | null = null;
 let saving = false;
-const favoritePending = new Set<string>();
+let editing: string | null = null;
+let mediaURL: string | null = null;
+let duration = 0;
+let previewEnd: number | null = null;
+let deleted: Sound | null = null;
+let toastTimer: ReturnType<typeof setTimeout> | undefined;
+let storageReady = false;
+const pending = new Set<string>();
+function focusSound(id?: string): void {
+  const pad = [...document.querySelectorAll<HTMLButtonElement>('.pad')].find(node => node.dataset.soundId === id);
+  (pad ?? document.querySelector<HTMLButtonElement>('.pad') ?? $<HTMLButtonElement>('.add-trigger')).focus({ preventScroll: true });
+}
 
 function icon(name: string): SVGSVGElement {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.classList.add('icon');
-  svg.setAttribute('aria-hidden', 'true');
-  const use = document.createElementNS(svg.namespaceURI, 'use');
-  use.setAttribute('href', `#i-${name}`);
-  svg.append(use);
-  return svg;
+  svg.classList.add('icon'); svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS(svg.namespaceURI, 'use'); use.setAttribute('href', `#i-${name}`); svg.append(use); return svg;
 }
 function text<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, content: string): HTMLElementTagNameMap[K] {
-  const element = document.createElement(tag);
-  element.className = className;
-  element.textContent = content;
-  return element;
+  const element = document.createElement(tag); element.className = className; element.textContent = content; return element;
 }
-function showError(element: HTMLElement, message: string): void {
-  element.textContent = message;
-  element.hidden = !message;
+function errorAt(id: string, error: unknown): void { const node = $(id); node.textContent = error ? message(error) : ''; node.hidden = !error; }
+function toast(content: string, undo = false): void {
+  clearTimeout(toastTimer); $('#toast-message').textContent = content; $('#undo-delete').hidden = !undo; $('#toast').hidden = false;
+  if (!undo) toastTimer = setTimeout(() => { $('#toast').hidden = true; }, 5000);
 }
-function announce(message: string): void { $('#announcement').textContent = message; }
-
+function chosenColor(name: string): SoundColor { const color = input(`input[name="${name}"]:checked`).value; return COLORS.includes(color as SoundColor) ? color as SoundColor : 'lavender'; }
+function setBusy(target: HTMLElement, busy: boolean): void {
+  target.setAttribute('aria-busy', String(busy));
+  target.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input,button').forEach(node => { node.disabled = busy; });
+}
 function render(): void {
-  const focused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  const focusId = focused?.dataset.soundId;
-  const focusAction = focused?.dataset.action;
-  const board = $('#board');
-  board.replaceChildren();
+  const focus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const focusId = focus?.dataset.soundId; const action = focus?.dataset.action;
+  const board = $('#board'); board.replaceChildren();
   const visible = sounds.filter(sound => (!favoritesOnly || sound.favorite) && matchesSound(sound, search.value));
   $('#total').textContent = String(sounds.length);
-  $('#empty').hidden = sounds.length !== 0;
-  $('#no-results').hidden = sounds.length === 0 || visible.length !== 0;
-  board.hidden = visible.length === 0;
-  board.setAttribute('aria-busy', 'false');
-  $('#all-filter').setAttribute('aria-pressed', String(!favoritesOnly));
-  $('#favorite-filter').setAttribute('aria-pressed', String(favoritesOnly));
-  $('#all-filter').classList.toggle('selected', !favoritesOnly);
-  $('#favorite-filter').classList.toggle('selected', favoritesOnly);
-  visible.forEach(sound => {
-    const card = document.createElement('li');
-    card.className = `sound-card${sound.id === activeId ? ' is-playing' : ''}`;
-    const pad = document.createElement('button');
-    pad.className = 'pad';
-    pad.dataset.soundId = sound.id;
-    pad.dataset.action = 'play';
-    pad.setAttribute('aria-label', `${sound.id === activeId ? 'Stop' : 'Play'} ${sound.name}`);
-    pad.setAttribute('aria-pressed', String(sound.id === activeId));
-    const top = document.createElement('span');
-    top.className = 'pad-top';
-    const number = String(sounds.length - sounds.indexOf(sound)).padStart(2, '0');
-    const playIcon = document.createElement('span');
-    playIcon.className = 'pad-icon';
-    playIcon.append(icon(sound.id === activeId ? 'stop' : 'play'));
-    top.append(text('span', 'pad-number', number), playIcon);
-    const detail = sound.source === 'youtube'
-      ? `YouTube / ${formatTime(sound.start)}${sound.end === null ? '' : `–${formatTime(sound.end)}`}`
-      : 'Audio / on device';
+  $('#empty').hidden = sounds.length !== 0; $('#no-results').hidden = sounds.length === 0 || visible.length !== 0;
+  board.hidden = visible.length === 0; board.setAttribute('aria-busy', 'false');
+  for (const [id, selected] of [['#all-filter', !favoritesOnly], ['#favorite-filter', favoritesOnly]] as const) { $(id).setAttribute('aria-pressed', String(selected)); $(id).classList.toggle('selected', selected); }
+  for (const sound of visible) {
+    const card = document.createElement('li'); card.className = `sound-card${sound.id === activeId ? ' is-playing' : ''}`; card.dataset.color = sound.color ?? 'lavender';
+    const pad = document.createElement('button'); pad.className = 'pad'; pad.dataset.soundId = sound.id; pad.dataset.action = 'play';
+    pad.setAttribute('aria-label', `${sound.id === activeId ? 'Detener' : 'Reproducir'} ${sound.name}`); pad.setAttribute('aria-pressed', String(sound.id === activeId));
+    const top = text('span', 'pad-top', ''); const playIcon = text('span', 'pad-icon', ''); playIcon.append(icon(sound.id === activeId ? 'stop' : 'play'));
+    top.append(text('span', 'pad-number', String(sounds.length - sounds.indexOf(sound)).padStart(2, '0')), playIcon);
+    const detail = sound.source === 'youtube' ? `YouTube · online · ${formatTime(sound.start)}` : 'Audio · sin conexión';
     pad.append(top, text('span', 'pad-name', sound.name), text('span', 'pad-meta', detail));
-    pad.addEventListener('click', () => { if (activeId === sound.id) player.stop(); else void player.play(sound); });
-    const favorite = document.createElement('button');
-    favorite.className = `favorite-button${sound.favorite ? ' is-favorite' : ''}`;
-    favorite.dataset.soundId = sound.id;
-    favorite.dataset.action = 'favorite';
-    favorite.setAttribute('aria-label', `${sound.favorite ? 'Unfavorite' : 'Favorite'} ${sound.name}`);
-    favorite.setAttribute('aria-pressed', String(sound.favorite));
-    favorite.disabled = favoritePending.has(sound.id);
-    favorite.append(icon('star'));
-    favorite.addEventListener('click', () => void toggleFavorite(sound));
-    card.append(pad, favorite);
-    board.append(card);
-  });
-  if (focusId) {
-    [...board.querySelectorAll('button')].find(button => button.dataset.soundId === focusId && button.dataset.action === focusAction)?.focus({ preventScroll: true });
+    pad.addEventListener('click', () => { preview.pause(); if (activeId === sound.id) player.stop(); else void player.play(sound); });
+    const favorite = document.createElement('button'); favorite.className = `favorite-button${sound.favorite ? ' is-favorite' : ''}`;
+    favorite.dataset.soundId = sound.id; favorite.dataset.action = 'favorite'; favorite.disabled = pending.has(sound.id);
+    favorite.setAttribute('aria-label', `${sound.favorite ? 'Quitar de' : 'Agregar a'} favoritos: ${sound.name}`); favorite.setAttribute('aria-pressed', String(sound.favorite)); favorite.append(icon('star'));
+    favorite.addEventListener('click', () => void toggleFavorite(sound.id));
+    const more = document.createElement('button'); more.className = 'icon-button more-button'; more.dataset.soundId = sound.id; more.dataset.action = 'edit'; more.disabled = pending.has(sound.id);
+    more.setAttribute('aria-label', `Editar ${sound.name}`); more.append(icon('more')); more.addEventListener('click', () => openEdit(sound.id));
+    card.append(pad, favorite, more); board.append(card);
   }
+  if (focusId) [...board.querySelectorAll('button')].find(button => button.dataset.soundId === focusId && button.dataset.action === action)?.focus({ preventScroll: true });
 }
-
-const player = createPlayer(id => { activeId = id; render(); });
+const player = createPlayer(id => {
+  activeId = id; render(); $('#mobile-transport').hidden = !id;
+  $('#mobile-track').textContent = sounds.find(sound => sound.id === id)?.name ?? '';
+});
 document.querySelectorAll('.stop-all').forEach(button => button.addEventListener('click', player.stop));
-
-async function toggleFavorite(sound: Sound): Promise<void> {
-  if (favoritePending.has(sound.id)) return;
-  favoritePending.add(sound.id);
-  render();
-  try {
-    const updated = await saveSound({ ...sound, favorite: !sound.favorite });
-    sounds = sounds.map(item => item.id === updated.id ? updated : item);
-    showError($('#app-error'), '');
-    announce(`${sound.name} ${updated.favorite ? 'added to' : 'removed from'} favorites`);
-  } catch (error) { showError($('#app-error'), errorMessage(error)); }
-  finally { favoritePending.delete(sound.id); render(); }
+async function toggleFavorite(id: string): Promise<void> {
+  if (pending.has(id)) return;
+  const sound = sounds.find(item => item.id === id); if (!sound) return;
+  pending.add(id); render();
+  try { const updated = await saveSound({ ...sound, favorite: !sound.favorite }); sounds = sounds.map(item => item.id === id ? updated : item); }
+  catch (error) { errorAt('#app-error', error); }
+  finally { pending.delete(id); render(); }
 }
-
-function clearErrors(): void {
-  showError($('#form-error'), '');
-  form.querySelectorAll('[aria-invalid]').forEach(input => input.removeAttribute('aria-invalid'));
+function releasePreview(): void {
+  preview.pause(); preview.removeAttribute('src'); preview.load();
+  if (mediaURL) URL.revokeObjectURL(mediaURL); mediaURL = null; duration = 0; previewEnd = null; $('#media-editor').hidden = true;
 }
 function updateSource(): void {
-  const local = source() === 'local';
-  $('#local-fields').hidden = !local;
-  $('#youtube-fields').hidden = local;
-  $<HTMLInputElement>('#sound-file').disabled = !local;
-  for (const id of ['#sound-url', '#clip-start', '#clip-end']) $<HTMLInputElement>(id).disabled = local;
-  clearErrors();
+  const local = source() === 'local'; $('#local-fields').hidden = !local; $('#youtube-fields').hidden = local;
+  preview.pause(); errorAt('#form-error', null);
 }
-document.querySelectorAll<HTMLButtonElement>('.add-trigger').forEach(button => {
-  button.disabled = true;
-  button.addEventListener('click', () => {
-    form.reset();
-    updateSource();
-    dialog.showModal();
-    $('#sound-name').focus();
-  });
-});
-$('#close-dialog').addEventListener('click', () => dialog.close());
-$('#cancel-dialog').addEventListener('click', () => dialog.close());
+function openAdd(): void {
+  form.reset(); releasePreview(); updateSource(); player.stop(); errorAt('#form-error', null);
+  dialog.showModal(); input('#sound-file').focus();
+}
+document.querySelectorAll<HTMLButtonElement>('.add-trigger').forEach(button => { button.disabled = true; button.addEventListener('click', openAdd); });
+for (const id of ['#close-dialog', '#cancel-dialog']) $(id).addEventListener('click', () => dialog.close());
 dialog.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
+dialog.addEventListener('close', releasePreview);
 form.addEventListener('change', event => { if (event.target instanceof HTMLInputElement && event.target.name === 'source') updateSource(); });
-form.addEventListener('input', clearErrors);
+form.addEventListener('input', () => errorAt('#form-error', null));
+input('#sound-file').addEventListener('change', () => {
+  releasePreview(); errorAt('#form-error', null);
+  const file = input('#sound-file').files?.[0]; if (!file) return;
+  try {
+    validateMedia(file);
+    if (!input('#sound-name').value.trim()) input('#sound-name').value = file.name.replace(/\.[^.]+$/, '').slice(0, 60);
+    mediaURL = URL.createObjectURL(file); preview.src = mediaURL; preview.classList.toggle('audio-only', !isVideo(file));
+    $('#media-editor').hidden = false;
+  } catch (error) { errorAt('#form-error', error); }
+});
+preview.addEventListener('loadedmetadata', () => {
+  duration = preview.duration;
+  if (!Number.isFinite(duration) || duration <= 0) { errorAt('#form-error', new Error('No se pudo leer la duración. Probá otro archivo.')); return; }
+  input('#local-start').value = '0'; input('#local-end').value = String(Math.floor(duration * 1000) / 1000);
+  input('#local-end').max = String(duration); input('#local-start').max = String(duration);
+  $('#media-duration').textContent = `${formatTime(duration)} de audio`;
+});
+preview.addEventListener('error', () => { if (mediaURL) errorAt('#form-error', new Error('El navegador no puede abrir este formato. Probá MP3, M4A o MP4 con audio AAC.')); });
+preview.addEventListener('timeupdate', () => { if (previewEnd !== null && preview.currentTime >= previewEnd) { preview.pause(); previewEnd = null; } });
+$('#preview-clip').addEventListener('click', () => {
+  try { const start = Number(input('#local-start').value), end = Number(input('#local-end').value); clipRange(start, end, duration); preview.currentTime = start; previewEnd = end; void preview.play().catch(error => errorAt('#form-error', error)); }
+  catch (error) { errorAt('#form-error', error); }
+});
 form.addEventListener('submit', async event => {
-  event.preventDefault();
-  if (saving) return;
-  clearErrors();
-  let sound: Sound;
+  event.preventDefault(); if (saving) return;
+  errorAt('#form-error', null);
+  const name = input('#sound-name').value.trim();
+  if (!name || name.length > 60) { errorAt('#form-error', new Error('Poné un nombre de hasta 60 caracteres.')); input('#sound-name').focus(); return; }
+  saving = true; setBusy(dialog, true); $('#import-progress').hidden = false; preview.pause();
   try {
-    sound = createSound({
-      name: $<HTMLInputElement>('#sound-name').value,
-      source: source(),
-      url: $<HTMLInputElement>('#sound-url').value,
-      start: $<HTMLInputElement>('#clip-start').value,
-      end: $<HTMLInputElement>('#clip-end').value,
-      file: $<HTMLInputElement>('#sound-file').files?.[0],
-    });
-  } catch (error) {
-    showError($('#form-error'), errorMessage(error));
-    const visibleInputs = [...form.querySelectorAll<HTMLInputElement>('input:not([type="radio"]):not(:disabled)')];
-    visibleInputs.forEach(input => input.setAttribute('aria-invalid', 'true'));
-    visibleInputs[0]?.focus();
-    return;
-  }
-  saving = true;
-  const downloading = sound.source === 'youtube' && $<HTMLInputElement>('#download-audio').checked;
-  const controls = [...dialog.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, button')]
-    .map(element => ({ element, disabled: element.disabled }));
-  controls.forEach(({ element }) => { element.disabled = true; });
-  $('#save-sound').firstChild!.textContent = downloading ? 'Importing audio…' : 'Saving…';
-  $('#import-progress').hidden = !downloading;
-  form.setAttribute('aria-busy', 'true');
+    let sound: Sound;
+    if (source() === 'local') {
+      const file = input('#sound-file').files?.[0]; if (!file) throw new Error('Elegí un archivo primero.');
+      const audio = await prepareAudio(file, Number(input('#local-start').value), Number(input('#local-end').value), duration);
+      sound = createSound({ name, source: 'local', file: audio });
+    } else sound = createSound({ name, source: 'youtube', url: input('#sound-url').value, start: input('#clip-start').value, end: input('#clip-end').value });
+    sound.color = chosenColor('color'); await saveSound(sound); sounds.unshift(sound);
+    favoritesOnly = false; search.value = ''; render(); dialog.close(); focusSound(sound.id); toast('Sonido guardado. Que llegue el momento.');
+    void navigator.storage?.persist?.().catch(() => false);
+  } catch (error) { errorAt('#form-error', error); }
+  finally { saving = false; setBusy(dialog, false); $('#import-progress').hidden = true; }
+});
+function openEdit(id: string): void {
+  const sound = sounds.find(item => item.id === id); if (!sound) return;
+  editing = id; input('#edit-name').value = sound.name;
+  input(`input[name="edit-color"][value="${sound.color ?? 'lavender'}"]`).checked = true;
+  $('#export-sound').hidden = sound.source !== 'local'; errorAt('#edit-error', null); editDialog.showModal(); input('#edit-name').focus();
+}
+let editBusy = false;
+editDialog.addEventListener('cancel', event => { if (editBusy) event.preventDefault(); });
+$('#edit-form').addEventListener('submit', async event => {
+  event.preventDefault(); if (editBusy || !editing) return;
+  const sound = sounds.find(item => item.id === editing); if (!sound) return;
+  const name = input('#edit-name').value.trim(); if (!name || name.length > 60) { errorAt('#edit-error', new Error('Poné un nombre de hasta 60 caracteres.')); return; }
+  editBusy = true; setBusy(editDialog, true);
+  try { const updated = await saveSound({ ...sound, name, color: chosenColor('edit-color') }); sounds = sounds.map(item => item.id === sound.id ? updated : item); if (activeId === sound.id) player.stop(); render(); editDialog.close(); focusSound(sound.id); toast('Cambios guardados.'); }
+  catch (error) { errorAt('#edit-error', error); }
+  finally { editBusy = false; setBusy(editDialog, false); }
+});
+$('#delete-sound').addEventListener('click', async () => {
+  if (editBusy) return;
+  const sound = sounds.find(item => item.id === editing); if (!sound) return;
+  editBusy = true; setBusy(editDialog, true);
+  try { await removeSound(sound.id); if (activeId === sound.id) player.stop(); sounds = sounds.filter(item => item.id !== sound.id); deleted = sound; render(); editDialog.close(); focusSound(); toast(`«${sound.name}» eliminado.`, true); }
+  catch (error) { errorAt('#edit-error', error); }
+  finally { editBusy = false; setBusy(editDialog, false); }
+});
+$('#undo-delete').addEventListener('click', async () => {
+  const sound = deleted; if (!sound) return;
+  const button = $<HTMLButtonElement>('#undo-delete'); button.disabled = true;
+  try { await saveSound(sound); sounds = await allSounds(); deleted = null; render(); focusSound(sound.id); toast('Sonido recuperado.'); }
+  catch (error) { errorAt('#app-error', error); }
+  finally { button.disabled = false; }
+});
+$('#close-toast').addEventListener('click', () => { $('#toast').hidden = true; });
+document.querySelectorAll<HTMLButtonElement>('[data-close]').forEach(button => button.addEventListener('click', () => $<HTMLDialogElement>(`#${button.dataset.close}`).close()));
+
+function download(file: File): void {
+  const url = URL.createObjectURL(file); const anchor = document.createElement('a'); anchor.href = url; anchor.download = file.name; document.body.append(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+async function shareOrDownload(file: File): Promise<void> {
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file] }); } catch (error) { if (!(error instanceof DOMException && error.name === 'AbortError')) throw error; }
+  } else download(file);
+}
+$('#export-sound').addEventListener('click', () => {
+  const sound = sounds.find(item => item.id === editing); if (sound?.source !== 'local') return;
+  const ext = sound.fileName.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') || 'mp3';
+  void shareOrDownload(new File([sound.blob], `${sound.name.replace(/[^\p{L}\p{N} _-]/gu, '') || 'tapzi'}.${ext}`, { type: sound.blob.type })).catch(error => errorAt('#edit-error', error));
+});
+$('#settings-trigger').addEventListener('click', () => {
+  const bytes = sounds.reduce((sum, s) => sum + (s.source === 'local' ? s.blob.size : 0), 0);
+  $('#storage-info').textContent = `${sounds.length} sonidos · ${(bytes / 1024 / 1024).toFixed(1)} MB de audio`;
+  $('#settings-message').textContent = ''; $<HTMLButtonElement>('#backup-export').disabled = !storageReady || !sounds.length; $<HTMLButtonElement>('#backup-import').disabled = !storageReady; settings.showModal();
+});
+$('#backup-export').addEventListener('click', () => {
+  try { const file = new File([makeBackup(sounds)], `tapzi-${new Date().toISOString().slice(0, 10)}.tapzi`, { type: 'application/octet-stream' }); void shareOrDownload(file).catch(error => { $('#settings-message').textContent = message(error); }); }
+  catch (error) { $('#settings-message').textContent = message(error); }
+});
+$('#backup-import').addEventListener('click', () => input('#backup-file').click());
+let restoring = false;
+settings.addEventListener('cancel', event => { if (restoring) event.preventDefault(); });
+input('#backup-file').addEventListener('change', async () => {
+  const file = input('#backup-file').files?.[0]; if (!file || restoring) return;
+  restoring = true; setBusy(settings, true); $('#settings-message').textContent = 'Revisando la copia…';
   try {
-    if (downloading && sound.source === 'youtube') sound = await downloadSound(sound);
-    await saveSound(sound);
-    sounds.unshift(sound);
-    favoritesOnly = false;
-    search.value = '';
-    render();
-    dialog.close();
-    announce(`${sound.name} added to your soundboard`);
-  } catch (error) { showError($('#form-error'), errorMessage(error)); }
-  finally {
-    saving = false;
-    controls.forEach(({ element, disabled }) => { element.disabled = disabled; });
-    $('#import-progress').hidden = true;
-    $('#save-sound').firstChild!.textContent = 'Add to soundboard';
-    form.setAttribute('aria-busy', 'false');
-  }
+    const restored = await readBackup(file); const before = sounds.length; await restoreSounds(restored); sounds = await allSounds(); render();
+    void navigator.storage?.persist?.().catch(() => false);
+    $('#settings-message').textContent = `${sounds.length - before} sonidos agregados. Tu colección anterior se conservó.`;
+    $('#storage-info').textContent = `${sounds.length} sonidos en este dispositivo`;
+  } catch (error) { $('#settings-message').textContent = message(error); }
+  finally { restoring = false; setBusy(settings, false); input('#backup-file').value = ''; }
 });
 $('#all-filter').addEventListener('click', () => { favoritesOnly = false; render(); });
 $('#favorite-filter').addEventListener('click', () => { favoritesOnly = true; render(); });
 search.addEventListener('input', render);
 $('#clear-filter').addEventListener('click', () => { favoritesOnly = false; search.value = ''; render(); search.focus(); });
-
+$('#demo-trigger').addEventListener('click', async () => {
+  const button = $<HTMLButtonElement>('#demo-trigger'); button.disabled = true;
+  try {
+    const demos = [['Redoble digital', 180, 'lavender'], ['Momento de suspenso', 330, 'peach'], ['Pequeña victoria', 660, 'mint']] as const;
+    const newSounds = demos.map(([name, hz, color], index) => {
+      const rate = 22050, length = rate * 1.2; const samples = new Float32Array(length);
+      for (let i = 0; i < length; i++) { const t = i / rate; const envelope = Math.min(1, t * 80) * Math.pow(1 - i / length, 2); const freq = hz * (index === 2 ? [1, 1.25, 1.5][Math.min(2, Math.floor(t * 3))] : 1); samples[i] = Math.sin(2 * Math.PI * freq * t) * envelope * .25 * (index === 0 ? Math.sin(t * 70) ** 2 : 1); }
+      const file = new File([encodeWav([samples], rate)], 'tapzi-demo.wav', { type: 'audio/wav' });
+      return { ...createSound({ name, source: 'local', file }), color };
+    });
+    await restoreSounds(newSounds); sounds = await allSounds(); render(); toast('Tres sonidos originales para probar. Podés editarlos o borrarlos.');
+  } catch (error) { errorAt('#app-error', error); }
+  finally { button.disabled = false; }
+});
+// Refresh after another tab changes the collection, without discarding an open form.
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && storageReady && !document.querySelector('dialog[open]')) void allSounds().then(items => { sounds = items; render(); }).catch(error => errorAt('#app-error', error)); });
 try {
-  sounds = await allSounds();
-  render();
+  sounds = await allSounds(); storageReady = true; render();
   document.querySelectorAll<HTMLButtonElement>('.add-trigger').forEach(button => { button.disabled = false; });
-} catch (error) {
-  showError($('#app-error'), errorMessage(error));
-  $('#board').setAttribute('aria-busy', 'false');
-}
+} catch (error) { errorAt('#app-error', error); $('#board').setAttribute('aria-busy', 'false'); }
+setupOffline(() => !document.querySelector('dialog[open]') && !activeId);

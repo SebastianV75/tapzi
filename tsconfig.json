@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "allowImportingTsExtensions": true,
@@ -9,8 +13,16 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["node"],
+    "types": [
+      "node",
+      "vite/client"
+    ],
     "erasableSyntaxOnly": true
   },
-  "include": ["src", "server/*.ts", "vite.config.ts", "tests/*.ts"]
+  "include": [
+    "src",
+    "server/*.ts",
+    "vite.config.ts",
+    "tests/*.ts"
+  ]
 }

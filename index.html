@@ -1,78 +1,72 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#e1ebf7">
-  <meta name="description" content="Your personal pocket soundboard. Save YouTube clips and local audio, ready for the right moment.">
-  <title>Tapzi — Your pocket soundboard</title>
+  <meta name="description" content="Tu colección de sonidos, siempre a mano. Personal, sin cuentas y sin conexión.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Tapzi">
+  <title>Tapzi — Tu botonera de bolsillo</title>
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="stylesheet" href="/styles.css">
   <script type="module" src="/src/app.ts"></script>
 </head>
 <body>
-  <a href="#board" class="skip-link">Skip to soundboard</a>
+  <a href="#board" class="skip-link">Ir a mis sonidos</a>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="Tapzi home"><svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true"><rect x="2" y="2" width="11" height="11" rx="3" fill="currentColor"/><rect x="17" y="2" width="11" height="11" rx="3" fill="currentColor" opacity=".25"/><rect x="2" y="17" width="11" height="11" rx="3" fill="currentColor" opacity=".25"/><rect x="17" y="17" width="11" height="11" rx="3" fill="currentColor" opacity=".25"/></svg><span>tapzi<span class="brand-dot">.</span></span></a>
-    <span class="header-caption">Your pocket soundboard</span>
-    <button class="button primary add-trigger"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Add a sound</button>
+    <a class="brand" href="/" aria-label="Tapzi, inicio"><svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true"><rect x="2" y="2" width="11" height="11" rx="3" fill="currentColor"/><rect x="17" y="2" width="11" height="11" rx="3" fill="currentColor" opacity=".25"/><rect x="2" y="17" width="11" height="11" rx="3" fill="currentColor" opacity=".25"/><rect x="17" y="17" width="11" height="11" rx="3" fill="currentColor" opacity=".25"/></svg><span>tapzi<span class="brand-dot">.</span></span></a>
+    <span class="header-caption">Sonidos para el momento justo.</span>
+    <div class="header-actions"><button class="icon-button" id="settings-trigger" aria-label="Mi colección y ajustes"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg></button><button class="button primary add-trigger"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Agregar</button></div>
   </header>
   <main>
-    <section class="page-heading" aria-labelledby="page-title">
-      <h1 id="page-title">Your soundboard<span class="accent">.</span></h1>
-    </section>
+    <section class="page-heading" aria-labelledby="page-title"><div><p class="eyebrow">TU BOTONERA DE BOLSILLO</p><h1 id="page-title">El sonido justo<span class="accent">.</span></h1><p class="intro">Tus memes. A un toque. Donde estés.</p></div><span id="connection" class="status-pill">En este dispositivo</span></section>
+    <div id="update-banner" class="notice" hidden>Hay una nueva versión de Tapzi. <button id="apply-update" class="text-button">Actualizar</button></div>
     <div class="workspace">
       <section class="library" aria-labelledby="library-title">
-        <div class="library-heading"><h2 id="library-title">Sounds <span id="total" class="count">0</span></h2></div>
-        <div class="toolbar"><div class="filters" aria-label="Filter sounds"><button class="filter selected" id="all-filter" aria-pressed="true">All sounds</button><button class="filter" id="favorite-filter" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>Favorites</button></div><label class="search"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search sounds</span><input id="search" type="search" placeholder="Search sounds" autocomplete="off"></label></div>
+        <div class="library-heading"><h2 id="library-title">Mis sonidos <span id="total" class="count">0</span></h2><span class="local-note"><svg class="icon" aria-hidden="true"><use href="#i-device"/></svg>Solo tuyos</span></div>
+        <div class="toolbar"><div class="filters" aria-label="Filtrar sonidos"><button class="filter selected" id="all-filter" aria-pressed="true">Todos</button><button class="filter" id="favorite-filter" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>Favoritos</button></div><label class="search"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Buscar sonidos</span><input id="search" type="search" placeholder="Buscar un sonido…" autocomplete="off" enterkeyhint="search"></label></div>
         <p id="app-error" class="error" role="alert" hidden></p>
-        <ul id="board" class="board" tabindex="-1" aria-label="Your sounds" aria-busy="true"></ul>
-        <div id="empty" class="empty-state" hidden>
-          <h3>Your first sound goes here</h3><p>Add a YouTube link or an audio file to get started.</p><button class="button primary add-trigger">Add your first sound<svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button>
-        </div>
-        <div id="no-results" class="no-results" hidden><h3>No sounds here yet</h3><p>Try another search or switch to all sounds</p><button id="clear-filter" class="button secondary">Show all sounds</button></div>
-        <p class="library-footnote">Tap to play / Star to keep a favorite</p>
+        <ul id="board" class="board" tabindex="-1" aria-label="Mis sonidos" aria-busy="true"></ul>
+        <div id="empty" class="empty-state" hidden><div class="empty-pads" aria-hidden="true"><span>▶</span><span>02</span><span>03</span><span>04</span></div><h3>Un meme merece su botón.</h3><p>Elegí un audio o video de tu teléfono.<br>Guardá el mejor momento y hacelo sonar.</p><button class="button primary add-trigger">Agregar mi primer sonido<svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button><button id="demo-trigger" class="text-button">Probar con tres sonidos</button></div>
+        <div id="no-results" class="no-results" hidden><h3>Por acá no suena nada.</h3><p>Probá otra búsqueda o mirá todos tus sonidos.</p><button id="clear-filter" class="button secondary">Ver todos</button></div>
+        <p class="library-footnote">Tocá para reproducir · Volvé a tocar para detener</p>
       </section>
       <aside class="player-panel" aria-labelledby="player-title">
-        <div class="panel-heading"><h2 id="player-title">Now playing</h2><span id="player-state" class="meta">Standby</span></div>
-        <div id="idle-player" class="idle-player"><p>Tap a pad to play</p></div>
+        <div class="panel-heading"><h2 id="player-title">Ahora suena</h2><span id="player-state" class="meta">En pausa</span></div>
+        <div id="idle-player" class="idle-player"><div class="idle-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><p>El momento lo elegís vos.</p></div>
         <div id="youtube-wrap" hidden><div id="youtube-player"></div></div>
         <audio id="audio-player" controls preload="none" hidden></audio>
-        <div class="track-info"><h3 id="track-name">No sound selected</h3><p id="track-detail">One sound at a time.</p></div>
-        <button class="button secondary stop-all" disabled><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>Stop all</button>
+        <div class="track-info"><h3 id="track-name">Tocá cualquier sonido</h3><p id="track-detail">Uno a la vez, para que se escuche bien.</p></div>
+        <button class="button secondary stop-all" disabled><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>Detener</button>
         <p id="playback-message" class="player-message" role="status" aria-live="polite"></p>
-        <div class="device-info"><svg class="icon" aria-hidden="true"><use href="#i-device"/></svg><div><h3>Saved on this device</h3><p>Audio stays in this browser. YouTube links need internet. Clearing browser data removes your collection.</p></div></div>
+        <div class="device-info"><svg class="icon" aria-hidden="true"><use href="#i-device"/></svg><div><h3>Tu teléfono es tu colección</h3><p>Los archivos se quedan acá. Guardá una copia desde ajustes para llevarlos a otro dispositivo.</p></div></div>
       </aside>
     </div>
   </main>
+  <div class="mobile-transport" id="mobile-transport" hidden><span id="mobile-track"></span><button class="icon-button stop-all" aria-label="Detener reproducción"><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg></button></div>
   <dialog id="add-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-description">
-    <div class="dialog-heading"><div><h2 id="dialog-title">Add a sound</h2></div><button id="close-dialog" class="icon-button" aria-label="Close add sound"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div>
-    <p id="dialog-description">Save a YouTube link or an audio file to your board.</p>
+    <div class="dialog-heading"><h2 id="dialog-title">Un nuevo sonido.</h2><button id="close-dialog" class="icon-button" aria-label="Cerrar"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+    <p id="dialog-description">De tu teléfono a tu botonera. Sin subir nada.</p>
     <form id="add-form" novalidate>
-      <fieldset class="source-options"><legend class="sr-only">Sound source</legend><label><input type="radio" name="source" value="youtube" checked><span><svg class="icon" aria-hidden="true"><use href="#i-video"/></svg>YouTube link</span></label><label><input type="radio" name="source" value="local"><span><svg class="icon" aria-hidden="true"><use href="#i-upload"/></svg>Audio file</span></label></fieldset>
-      <div class="field"><label for="sound-name">Sound name</label><input id="sound-name" name="name" maxlength="60" placeholder="Give it a name" required aria-describedby="form-error" autocomplete="off"></div>
-      <div id="youtube-fields">
-        <div class="field"><label for="sound-url">YouTube link</label><input id="sound-url" name="url" type="url" placeholder="https://youtube.com/watch?v=…" aria-describedby="url-help form-error" autocapitalize="none" spellcheck="false"></div>
-        <label class="import-option"><input id="download-audio" name="download" type="checkbox" checked aria-describedby="download-help"><span>Download audio to this device</span></label>
-        <small id="download-help">Needs yt-dlp and FFmpeg on the computer running Tapzi.</small>
-        <details id="download-details" class="form-disclosure">
-          <summary>About downloads &amp; online links</summary>
-          <p id="download-explanation"><span id="url-help">Uncheck download to save an online link using the visible YouTube player instead.</span> Online playback needs internet and may be restricted by YouTube. Only download audio you have permission to use.</p>
-        </details>
-        <details id="trim-options" class="form-disclosure">
-          <summary>Trim audio <span class="muted">(optional)</span></summary>
-          <div class="time-fields"><div class="field"><label for="clip-start">Start at</label><input id="clip-start" name="start" placeholder="0:00" aria-describedby="time-help form-error"></div><div class="field"><label for="clip-end">End at <span class="muted">(optional)</span></label><input id="clip-end" name="end" placeholder="0:12" aria-describedby="time-help form-error"></div></div><small id="time-help">Use seconds or m:ss · Leave the end empty to play to the end</small>
-        </details>
-      </div>
-      <div id="local-fields" hidden><div class="field"><label for="sound-file">Audio file</label><input id="sound-file" name="file" type="file" accept="audio/*" aria-describedby="file-help form-error"><small id="file-help">MP3, WAV, M4A or another browser-supported audio · Up to 25 MB</small></div><p class="local-explainer">Saved in this browser, never uploaded. Clearing browser data removes your collection.</p></div>
-      <p id="import-progress" class="local-explainer" role="status" hidden>Downloading and converting audio on your computer… This can take up to two minutes. Nothing is added until the import finishes.</p>
-      <p id="form-error" class="error" role="alert" hidden></p>
-      <div class="form-actions"><button id="cancel-dialog" type="button" class="button secondary">Cancel</button><button id="save-sound" class="button primary" type="submit">Add to soundboard<svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button></div>
+      <fieldset class="source-options"><legend class="sr-only">Origen del sonido</legend><label><input type="radio" name="source" value="local" checked><span><svg class="icon" aria-hidden="true"><use href="#i-upload"/></svg>Audio o video</span></label><label><input type="radio" name="source" value="youtube"><span><svg class="icon" aria-hidden="true"><use href="#i-video"/></svg>YouTube</span></label></fieldset>
+      <div id="local-fields"><div class="field file-field"><label for="sound-file">Elegí el archivo</label><input id="sound-file" type="file" accept="audio/*,video/*,.mp3,.m4a,.wav,.mp4,.mov" aria-describedby="file-help"><small id="file-help">Audio o video de hasta 50 MB. Se procesa en tu dispositivo.</small></div>
+      <div id="media-editor" hidden><video id="media-preview" controls playsinline preload="metadata"></video><div class="trim-heading"><span id="media-duration"></span><button id="preview-clip" type="button" class="text-button">Escuchar fragmento</button></div><div class="time-fields"><div class="field"><label for="local-start">Inicio · segundos</label><input id="local-start" type="number" inputmode="decimal" min="0" step="0.1" value="0"></div><div class="field"><label for="local-end">Final · segundos</label><input id="local-end" type="number" inputmode="decimal" min="0.1" step="0.1"></div></div><small>Recortes y audio de videos: hasta 2 minutos.</small></div></div>
+      <div id="youtube-fields" hidden><div class="notice">Se guarda como enlace online. Necesita internet y el reproductor de YouTube; algunos videos no permiten reproducirse aquí.</div><div class="field"><label for="sound-url">Enlace de YouTube</label><input id="sound-url" type="url" placeholder="https://youtu.be/…" autocapitalize="none" spellcheck="false"></div><details id="trim-options" class="form-disclosure"><summary>Elegir un fragmento</summary><div class="time-fields"><div class="field"><label for="clip-start">Inicio</label><input id="clip-start" placeholder="0:00"></div><div class="field"><label for="clip-end">Final (opcional)</label><input id="clip-end" placeholder="0:12"></div></div></details></div>
+      <div class="field"><label for="sound-name">Nombre</label><input id="sound-name" maxlength="60" placeholder="Ese audio que siempre usás" required autocomplete="off"></div>
+      <fieldset class="color-picker"><legend>Color del botón</legend><label class="swatch lavender"><input type="radio" name="color" value="lavender" checked><span class="sr-only">Lavanda</span></label><label class="swatch peach"><input type="radio" name="color" value="peach" ><span class="sr-only">Durazno</span></label><label class="swatch mint"><input type="radio" name="color" value="mint" ><span class="sr-only">Menta</span></label><label class="swatch blue"><input type="radio" name="color" value="blue" ><span class="sr-only">Azul</span></label></fieldset>
+      <p id="import-progress" class="local-explainer" role="status" hidden>Preparando tu sonido… Mantené Tapzi abierta un momento.</p><p id="form-error" class="error" role="alert" hidden></p>
+      <div class="form-actions"><button id="cancel-dialog" type="button" class="button secondary">Cancelar</button><button id="save-sound" class="button primary" type="submit">Guardar sonido<svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button></div>
     </form>
   </dialog>
+  <dialog id="edit-dialog" aria-labelledby="edit-title"><div class="dialog-heading"><h2 id="edit-title">Tu sonido.</h2><button class="icon-button" data-close="edit-dialog" aria-label="Cerrar"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><form id="edit-form"><div class="field"><label for="edit-name">Nombre</label><input id="edit-name" maxlength="60" required autocomplete="off"></div><fieldset class="color-picker"><legend>Color del botón</legend><label class="swatch lavender"><input type="radio" name="edit-color" value="lavender" checked><span class="sr-only">Lavanda</span></label><label class="swatch peach"><input type="radio" name="edit-color" value="peach" ><span class="sr-only">Durazno</span></label><label class="swatch mint"><input type="radio" name="edit-color" value="mint" ><span class="sr-only">Menta</span></label><label class="swatch blue"><input type="radio" name="edit-color" value="blue" ><span class="sr-only">Azul</span></label></fieldset><p id="edit-error" class="error" role="alert" hidden></p><div class="edit-tools"><button id="export-sound" class="button secondary" type="button">Compartir audio</button><button id="delete-sound" class="text-button danger" type="button">Eliminar sonido</button></div><div class="form-actions"><button class="button primary" type="submit">Guardar cambios</button></div></form></dialog>
+  <dialog id="settings-dialog" aria-labelledby="settings-title"><div class="dialog-heading"><h2 id="settings-title">Todo queda acá.</h2><button class="icon-button" data-close="settings-dialog" aria-label="Cerrar"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><p class="intro">Sin cuentas, suscripciones ni servidores de audio.</p><section class="settings-section"><h3>Tu colección</h3><p id="storage-info"></p><p>Borrar los datos del navegador elimina los sonidos. Una copia incluye tus audios, nombres y favoritos.</p><div class="settings-actions"><button id="backup-export" class="button primary">Guardar copia</button><button id="backup-import" class="button secondary">Restaurar copia</button><input id="backup-file" type="file" accept=".tapzi,application/octet-stream" hidden></div><small>Restaurar agrega los sonidos que faltan, sin reemplazar los actuales. Hasta 200 MB por copia.</small></section><section class="settings-section"><h3>Tapzi en tu pantalla de inicio</h3><p>En Safari: Compartir → Agregar a pantalla de inicio → Agregar. Abrila desde el icono y esperá a que indique «Lista sin conexión».</p><p id="offline-status" role="status">Preparando disponibilidad sin conexión…</p><button id="install-app" class="button secondary" hidden>Instalar Tapzi</button><p class="local-explainer">La colección pertenece al navegador o a la app instalada donde la guardaste. Usá una copia para trasladarla.</p></section><p id="settings-message" role="status"></p></dialog>
+  <div id="toast" class="toast" hidden><span id="toast-message" role="status"></span><button id="undo-delete" class="text-button" hidden>Deshacer</button><button id="close-toast" class="icon-button" aria-label="Cerrar aviso">×</button></div>
   <p class="sr-only" id="announcement" role="status" aria-live="polite"></p>
-  <noscript>Tapzi needs JavaScript to save and play sounds</noscript>
+  <noscript>Tapzi necesita JavaScript para guardar y reproducir sonidos.</noscript>
   <!-- Lucide icon paths, ISC license: https://lucide.dev/license -->
   <svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
@@ -84,6 +78,6 @@
     <symbol id="i-close" viewBox="0 0 24 24"><path d="m18 6-12 12M6 6l12 12"/></symbol>
     <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></symbol>
     <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="4"/><path d="m10 9 5 3-5 3V9Z"/></symbol>
-  </defs></svg>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--paper)"/><circle cx="15" cy="17" r="3" fill="var(--paper)"/></symbol><symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol></defs></svg>
 </body>
 </html>

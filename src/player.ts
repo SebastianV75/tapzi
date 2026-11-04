@@ -35,7 +35,7 @@ function youtubeAPI(): Promise<YouTubeAPI> {
       clearTimeout(timeout);
       script.remove();
       api = null;
-      reject(new Error('YouTube could not load. Check your connection or content blocker, then tap the pad to retry.'));
+      reject(new Error('YouTube no pudo cargar. Revisá tu conexión y volvé a tocar el sonido.'));
     };
     window.onYouTubeIframeAPIReady = () => {
       clearTimeout(timeout);
@@ -78,29 +78,29 @@ export function createPlayer(onChange: (id: string | null) => void): { play(soun
     wrapper.replaceChildren(Object.assign(document.createElement('div'), { id: 'youtube-player' }));
     wrapper.hidden = true;
     idle.hidden = false;
-    state.textContent = 'Standby';
+    state.textContent = 'En pausa';
     message.textContent = '';
-    element('#track-name').textContent = 'No sound selected';
-    element('#track-detail').textContent = 'One sound at a time. All yours.';
+    element('#track-name').textContent = 'Tocá cualquier sonido';
+    element('#track-detail').textContent = 'Uno a la vez, para que se escuche bien.';
     document.querySelectorAll<HTMLButtonElement>('.stop-all').forEach(button => { button.disabled = true; });
     onChange(null);
   }
 
   function fail(error: Error): void {
     stop();
-    state.textContent = 'Could not play';
+    state.textContent = 'No se pudo reproducir';
     message.textContent = error.message;
   }
 
   audio.addEventListener('ended', stop);
   audio.addEventListener('error', () => {
-    if (current?.source === 'local') fail(new Error('This browser could not play that audio format. Try MP3 or WAV.'));
+    if (current?.source === 'local') fail(new Error('Este formato no se puede reproducir aquí. Probá MP3 o WAV.'));
   });
   audio.addEventListener('playing', () => {
-    if (current?.source === 'local') state.textContent = 'Playing';
+    if (current?.source === 'local') state.textContent = 'Reproduciendo';
   });
   audio.addEventListener('pause', () => {
-    if (current?.source === 'local') state.textContent = 'Paused';
+    if (current?.source === 'local') state.textContent = 'En pausa';
   });
 
   async function play(sound: Sound): Promise<void> {
@@ -109,11 +109,11 @@ export function createPlayer(onChange: (id: string | null) => void): { play(soun
     current = sound;
     onChange(sound.id);
     idle.hidden = true;
-    state.textContent = 'Loading';
+    state.textContent = 'Cargando';
     element('#track-name').textContent = sound.name;
     element('#track-detail').textContent = sound.source === 'youtube'
       ? `YouTube · ${formatTime(sound.start)} → ${sound.end === null ? 'end' : formatTime(sound.end)}`
-      : 'Local audio · Saved on this device';
+      : 'Audio local · Guardado en este dispositivo';
     document.querySelectorAll<HTMLButtonElement>('.stop-all').forEach(button => { button.disabled = false; });
     try {
       if (sound.source === 'local') {
@@ -122,8 +122,9 @@ export function createPlayer(onChange: (id: string | null) => void): { play(soun
         audio.hidden = false;
         await audio.play();
       } else {
+        if (!navigator.onLine) throw new Error('Este sonido es un enlace de YouTube y necesita internet. Los audios locales siguen disponibles.');
         wrapper.hidden = false;
-        message.textContent = 'YouTube needs internet. If playback does not start, tap Play in the visible player.';
+        message.textContent = 'YouTube necesita internet. Si no comienza, tocá reproducir en el video.';
         const YT = await youtubeAPI();
         if (token !== request) return;
         player = new YT.Player('youtube-player', {
@@ -143,21 +144,21 @@ export function createPlayer(onChange: (id: string | null) => void): { play(soun
               else if (event.data === 1) {
                 const duration = event.target.getDuration();
                 if (duration && sound.start >= duration) {
-                  fail(new Error('This clip starts after the video ends. Add it again with an earlier start.'));
+                  fail(new Error('El fragmento empieza después del final del video. Agregalo con otro inicio.'));
                   return;
                 }
-                state.textContent = 'Playing';
-                message.textContent = 'YouTube playback uses internet and may include ads';
-              } else if (event.data === 2 || event.data === 5) state.textContent = 'Paused';
-              else if (event.data === 3) state.textContent = 'Buffering';
+                state.textContent = 'Reproduciendo';
+                message.textContent = 'YouTube usa internet y puede incluir anuncios.';
+              } else if (event.data === 2 || event.data === 5) state.textContent = 'En pausa';
+              else if (event.data === 3) state.textContent = 'Cargando';
             },
-            onAutoplayBlocked() { if (token === request) { state.textContent = 'Ready'; message.textContent = 'Tap Play in the YouTube player to begin'; } },
-            onError() { if (token === request) fail(new Error('YouTube cannot play this video here. It may be private, removed, or blocked from embedding.')); },
+            onAutoplayBlocked() { if (token === request) { state.textContent = 'Listo'; message.textContent = 'Tocá reproducir en el video para empezar.'; } },
+            onError() { if (token === request) fail(new Error('YouTube no permite reproducir este video aquí. Puede ser privado, haber sido eliminado o tener restricciones.')); },
           },
         });
       }
     } catch (error) {
-      if (token === request) fail(error instanceof Error ? error : new Error('Unable to start playback. Try again.'));
+      if (token === request) fail(error instanceof Error ? error : new Error('No se pudo iniciar la reproducción. Intentá otra vez.'));
     }
   }
   return { play, stop };
