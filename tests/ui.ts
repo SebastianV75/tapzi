@@ -148,6 +148,28 @@ try {
   check($('#player-state').textContent === 'En pausa', 'Paused decoded sound is reflected in the transport');
   $('#play-pause').click(); await wait(isPlaying, 'resume decoded sound'); $('.stop-all').click();
   passed.push('Decoded playback from memory / media-element fallback / compatibility mode / transport');
+
+  // Motion carries information: newcomers arrive once, the playing sound fills as it progresses, and every press answers.
+  await reload();
+  check(doc().querySelectorAll('.sound-card.is-new').length === doc().querySelectorAll('.sound-card').length, 'Sounds animate in on first load');
+  input('#search', 'a'); input('#search', '');
+  check(doc().querySelectorAll('.sound-card.is-new').length === 0, 'Searching does not replay the entrance');
+  check(getComputedStyle($('.toolbar')).position === 'sticky', 'Search and filters stay reachable while scrolling');
+  const playingCard = (): HTMLElement | null => doc().querySelector<HTMLElement>('.sound-card.is-playing');
+  $('.pad').click();
+  check(doc().querySelectorAll('.pad .ripple').length === 1, 'A press leaves a ripple on the pad');
+  await wait(isPlaying, 'motion playback');
+  check(!!playingCard()?.querySelector('.eq') && playingCard()!.style.getPropertyValue('--p') !== '', 'The playing sound shows an equalizer and a progress fill');
+  await wait(() => Number(playingCard()?.style.getPropertyValue('--p')) > .05, 'Progress fill advances with playback');
+  $('#play-pause').click(); await wait(() => !!doc().querySelector('.sound-card.is-playing.is-paused'), 'Pausing freezes the equalizer');
+  $('#play-pause').click(); await wait(() => !!playingCard() && !playingCard()!.classList.contains('is-paused'), 'Resuming restarts it');
+  $('.stop-all').click();
+  await wait(() => doc().querySelectorAll('.pad .ripple').length === 0, 'The ripple cleans itself up');
+  $('.favorite-button').click(); await wait(() => $('.favorite-button').getAttribute('aria-pressed') === 'true', 'star on');
+  check(!!doc().querySelector('.favorite-button.pop'), 'A new favourite pops');
+  $('.favorite-button').click(); await wait(() => $('.favorite-button').getAttribute('aria-pressed') === 'false', 'star off');
+  check(!doc().querySelector('.favorite-button.pop'), 'Removing a favourite does not pop');
+  passed.push('Entrance only for newcomers / progress fill / equalizer pause / press ripple / favourite pop / sticky toolbar');
   $('.favorite-button').click(); await wait(() => $('.favorite-button').getAttribute('aria-pressed') === 'true', 'favorite commit');
   input('#search', 'epico'); check(doc().querySelectorAll('.pad').length === 1, 'Accent-insensitive search');
   input('#search', 'absent'); check(!$('#no-results').hidden, 'No results'); $('#clear-filter').click();

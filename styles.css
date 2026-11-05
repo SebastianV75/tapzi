@@ -65,7 +65,7 @@ svg { display: block; flex-shrink: 0; }
 h1 { font: 700 54px/1.1 var(--display); letter-spacing: -1px; }
 .title-highlight { display: inline-block; background: var(--lavender); line-height: 1; padding: 6px 8px 2px; border-radius: 4px; }
 .accent { color: var(--accent); }
-.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 24px; padding-top: 20px; border-top: 1px solid var(--outline); }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 24px; padding-top: 20px; }
 .filters { display: flex; gap: 3px; border: 1px solid var(--line); background: #29312f08; padding: 3px; border-radius: 15px; }
 .filter { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 10px 16px; border-radius: 11px; font-size: 13px; color: var(--muted); background: transparent; border: 1px solid transparent; }
 .filter .icon { width: 16px; height: 16px; }
@@ -79,7 +79,7 @@ input::placeholder { color: #64717b; opacity: 1; }
 .sound-card[data-color='peach'] { --pad-bg: var(--peach); }
 .sound-card[data-color='mint'] { --pad-bg: var(--mint); }
 .sound-card[data-color='blue'] { --pad-bg: var(--blue); }
-.pad { display: grid; place-items: center; width: 100%; min-height: 132px; padding: 40px 14px 20px; border: 0; border-radius: 18px; background: transparent; text-align: center; }
+.pad { position: relative; overflow: hidden; display: grid; place-items: center; width: 100%; min-height: 132px; padding: 40px 14px 20px; border: 0; border-radius: 18px; background: transparent; text-align: center; }
 .pad-name { font-size: 17px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; letter-spacing: -.2px; }
 .favorite-button, .more-button { position: absolute; top: 4px; width: 44px; height: 44px; display: grid; place-items: center; padding: 12px; background: transparent; color: #46514e; border: 0; border-radius: 50%; }
 .favorite-button { right: 4px; }
@@ -87,7 +87,16 @@ input::placeholder { color: #64717b; opacity: 1; }
 .favorite-button .icon { width: 17px; height: 17px; }
 .is-favorite { color: var(--ink); }
 .is-favorite .icon { fill: currentColor; }
-.sound-card.is-playing { --pad-bg: var(--lime); outline: 2px solid var(--ink); outline-offset: 3px; }
+/* The playing sound fills with lime as it progresses; --p is 0..1 (sounds without a known length stay full). */
+.sound-card::before { content: ''; position: absolute; inset: 0; border-radius: inherit; background: var(--lime); clip-path: inset(0 100% 0 0); pointer-events: none; }
+.sound-card.is-playing::before { clip-path: inset(0 calc(100% - var(--p, 1) * 100%) 0 0); }
+.sound-card.is-playing { outline: 2px solid var(--ink); outline-offset: 3px; }
+.eq { position: absolute; left: 50%; bottom: 9px; display: flex; align-items: flex-end; gap: 3px; height: 14px; transform: translateX(-50%); pointer-events: none; }
+.eq i { width: 3px; height: 100%; border-radius: 2px; background: var(--ink); transform-origin: bottom; transform: scaleY(.45); }
+.ripple { position: absolute; width: 280px; height: 280px; margin: -140px 0 0 -140px; border-radius: 50%; background: #ffffff; pointer-events: none; transform: scale(0); opacity: 0; }
+.toolbar { position: sticky; top: env(safe-area-inset-top); z-index: 6; margin-inline: -12px; padding-inline: 12px; background: color-mix(in srgb, var(--paper) 92%, transparent); }
+.toolbar::before { content: ''; position: absolute; top: 0; left: 12px; right: 12px; border-top: 1px solid var(--outline); }
+html { scroll-padding-top: 110px; }
 main { padding-bottom: 170px; }
 .empty-state, .no-results { text-align: center; padding: 64px 16px 72px; }
 .empty-state h2, .no-results h2 { font: 700 29px/1.2 var(--display); letter-spacing: -.3px; }
@@ -232,7 +241,32 @@ body:has(.transport:not([hidden])) .toast { bottom: 150px; }
   .sound-card { transition: transform 120ms ease-out; }
   .sound-card:has(.pad:active:not(:focus-visible)) { transform: translateY(2px); box-shadow: none; }
   dialog[open] { animation: reveal-dialog 220ms cubic-bezier(.22, 1, .36, 1); }
+  dialog[open]::backdrop { animation: fade-in 220ms ease-out; }
   @keyframes reveal-dialog { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fade-in { from { opacity: 0; } }
+  /* Only sounds that were not on screen before animate in, so searching or favouriting never replays it. */
+  .sound-card.is-new { animation: card-in 380ms cubic-bezier(.22, 1, .36, 1) backwards; animation-delay: calc(var(--i, 0) * 35ms); }
+  @keyframes card-in { from { opacity: 0; transform: translateY(12px); } }
+  .sound-card::before { transition: clip-path 200ms linear; }
+  .is-playing .eq i { animation: eq 880ms ease-in-out infinite; }
+  .eq i:nth-child(2) { animation-duration: 720ms; animation-delay: -240ms; }
+  .eq i:nth-child(3) { animation-duration: 1000ms; animation-delay: -520ms; }
+  .eq i:nth-child(4) { animation-duration: 800ms; animation-delay: -120ms; }
+  .is-paused .eq i { animation-play-state: paused; }
+  @keyframes eq { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
+  .ripple { animation: ripple 560ms ease-out forwards; }
+  @keyframes ripple { from { transform: scale(0); opacity: .5; } to { transform: scale(1); opacity: 0; } }
+  .favorite-button.pop .icon { animation: star-pop 440ms cubic-bezier(.3, 1.6, .5, 1); }
+  @keyframes star-pop { 0% { transform: scale(1); } 40% { transform: scale(1.5) rotate(-14deg); } 100% { transform: scale(1); } }
+  .transport:not([hidden]) { animation: rise 320ms cubic-bezier(.22, 1, .36, 1); }
+  @keyframes rise { from { opacity: 0; transform: translate(-50%, 28px); } }
+  .toast:not([hidden]) { animation: toast-in 260ms cubic-bezier(.22, 1, .36, 1); }
+  @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 14px); } }
+  .filter { transition: background-color 160ms ease-out, color 160ms ease-out, box-shadow 160ms ease-out, transform 120ms ease-out; }
+}
+@media (prefers-reduced-motion: no-preference) and (max-width: 600px) {
+  dialog[open] { animation: sheet-up 340ms cubic-bezier(.22, 1, .36, 1); }
+  @keyframes sheet-up { from { opacity: 0; transform: translateY(56px); } }
 }
 @media (max-width: 900px) { .board { grid-template-columns: repeat(3, minmax(0,1fr)); } }
 @media (max-width: 600px) {
@@ -240,8 +274,8 @@ body:has(.transport:not([hidden])) .toast { bottom: 150px; }
   .topbar { min-height: 84px; }
   .brand { font-size: 32px; }.brand-mark { width: 34px; height: 34px; }
   .page-heading { padding-block: 4px 20px; }h1 { font-size: 44px; letter-spacing: -.8px; }  .desktop-add { display: none; }
-  .toolbar { flex-direction: column-reverse; align-items: stretch; gap: 14px; margin-bottom: 20px; padding-top: 18px; }
-  .search { width: 100%; }.search input { min-height: 46px; }.filter { flex: 1; }
+  .toolbar { gap: 10px; margin-bottom: 14px; padding-top: 12px; padding-bottom: 10px; }
+  .search { flex: 1; width: auto; }.search input { min-height: 44px; }.filter { flex: none; padding-inline: 14px; }.filter-label { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }.filters { flex: none; }
   .board { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
   .pad { min-height: 112px; padding: 38px 10px 14px; }.pad-name { font-size: 15px; }.favorite-button { top: 2px; right: 2px; }.more-button { top: 2px; left: 2px; }
     .empty-state { padding: 20px 0 40px; }.empty-state h2 { font-size: 26px; }.empty-state p { font-size: 14px; }.empty-art { margin-bottom: 16px; }
@@ -261,10 +295,12 @@ body:has(.transport:not([hidden])) .toast { bottom: 150px; }
 }
 /* Frosted material belongs to floating controls; sound pads stay flat and clear. */
 @supports ((backdrop-filter: blur(12px)) or (-webkit-backdrop-filter: blur(12px))) {
+  .toolbar { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
   .transport, .bottom-add { background: #f5f8fce8; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
 }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   .transport, .bottom-add { background: var(--surface); backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .toolbar { background: var(--paper); backdrop-filter: none; -webkit-backdrop-filter: none; }
   :root { --outline: #29312f; --line: #56636a; }
 }
 @media (forced-colors: active) {

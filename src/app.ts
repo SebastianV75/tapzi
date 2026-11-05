@@ -24,6 +24,10 @@ const input = (id: string): HTMLInputElement => $<HTMLInputElement>(id);
 const source = (): string => input('input[name="source"]:checked').value;
 const engine = createSoundEngine();
 let sounds: Sound[] = [];
+const seen = new Set<string>(); // sounds already shown once, so only newcomers animate in
+let popId: string | null = null; // the sound whose star was just switched on
+let tap: { id: string; x: number; y: number } | null = null; // where the last press landed, for the ripple
+const motionOK = matchMedia('(prefers-reduced-motion: no-preference)');
 let favoritesOnly = false;
 let activeId: string | null = null;
 let saving = false;
@@ -75,13 +79,26 @@ function render(): void {
   $('#no-results-description').textContent = favoritesOnly && !search.value.trim() ? 'Toca la estrella de un sonido para tenerlo siempre a mano.' : 'Prueba con otro nombre o vuelve a verlos todos.'; $('#no-results').hidden = sounds.length === 0 || visible.length !== 0;
   board.hidden = visible.length === 0; board.setAttribute('aria-busy', 'false');
   for (const [id, selected] of [['#all-filter', !favoritesOnly], ['#favorite-filter', favoritesOnly]] as const) { $(id).setAttribute('aria-pressed', String(selected)); $(id).classList.toggle('selected', selected); }
+  let arrival = 0;
   for (const sound of visible) {
     const card = document.createElement('li'); card.className = `sound-card${sound.id === activeId ? ' is-playing' : ''}`; card.dataset.color = sound.color ?? 'lavender';
+    if (!seen.has(sound.id)) { seen.add(sound.id); card.classList.add('is-new'); card.style.setProperty('--i', String(Math.min(arrival++, 14))); }
+    if (sound.id === activeId && sound.source === 'local') card.style.setProperty('--p', '0');
     const pad = document.createElement('button'); pad.className = 'pad'; pad.dataset.soundId = sound.id; pad.dataset.action = 'play';
     pad.setAttribute('aria-label', `${sound.id === activeId ? 'Detener' : 'Reproducir'} ${sound.name}`); pad.setAttribute('aria-pressed', String(sound.id === activeId));
     pad.append(text('span', 'pad-name', sound.name));
-    pad.addEventListener('click', () => { clipEditor.pause(); if (activeId === sound.id) player.stop(); else void player.play(sound); });
-    const favorite = document.createElement('button'); favorite.className = `favorite-button${sound.favorite ? ' is-favorite' : ''}`;
+    if (sound.id === activeId) { const bars = text('span', 'eq', ''); bars.setAttribute('aria-hidden', 'true'); bars.append(...[0, 1, 2, 3].map(() => document.createElement('i'))); pad.append(bars); }
+    if (tap?.id === sound.id && motionOK.matches) {
+      const wave = text('span', 'ripple', ''); wave.setAttribute('aria-hidden', 'true'); wave.style.left = `${tap.x}px`; wave.style.top = `${tap.y}px`;
+      wave.addEventListener('animationend', () => wave.remove(), { once: true }); pad.append(wave);
+    }
+    pad.addEventListener('click', event => {
+      const box = pad.getBoundingClientRect(), keyboard = event.detail === 0;
+      tap = { id: sound.id, x: keyboard ? box.width / 2 : event.clientX - box.left, y: keyboard ? box.height / 2 : event.clientY - box.top };
+      navigator.vibrate?.(8); // Android only; iOS Safari has no vibration API
+      clipEditor.pause(); if (activeId === sound.id) player.stop(); else void player.play(sound);
+    });
+    const favorite = document.createElement('button'); favorite.className = `favorite-button${sound.favorite ? ' is-favorite' : ''}${sound.id === popId ? ' pop' : ''}`;
     favorite.dataset.soundId = sound.id; favorite.dataset.action = 'favorite'; favorite.disabled = pending.has(sound.id);
     favorite.setAttribute('aria-label', `${sound.favorite ? 'Quitar de' : 'Agregar a'} favoritos: ${sound.name}`); favorite.setAttribute('aria-pressed', String(sound.favorite)); favorite.append(icon('star'));
     favorite.addEventListener('click', () => void toggleFavorite(sound.id));
@@ -89,18 +106,23 @@ function render(): void {
     more.setAttribute('aria-label', `Editar ${sound.name}`); more.append(icon('more')); more.addEventListener('click', () => openEdit(sound.id));
     card.append(pad, favorite, more); board.append(card);
   }
+  tap = null; popId = null;
   if (focusId) [...board.querySelectorAll('button')].find(button => button.dataset.soundId === focusId && button.dataset.action === action)?.focus({ preventScroll: true });
 }
 const player = createPlayer(id => {
   activeId = id; render(); $('#mobile-transport').hidden = !id;
   document.body.classList.toggle('has-playback', !!id);
-}, engine);
+}, engine, (fraction, paused) => {
+  const card = document.querySelector<HTMLElement>('.sound-card.is-playing');
+  if (!card) return;
+  card.style.setProperty('--p', fraction.toFixed(3)); card.classList.toggle('is-paused', paused);
+});
 document.querySelectorAll('.stop-all').forEach(button => button.addEventListener('click', player.stop));
 async function toggleFavorite(id: string): Promise<void> {
   if (pending.has(id)) return;
   const sound = sounds.find(item => item.id === id); if (!sound) return;
   pending.add(id); render();
-  try { const updated = await saveSound({ ...sound, favorite: !sound.favorite }); sounds = sounds.map(item => item.id === id ? updated : item); }
+  try { const updated = await saveSound({ ...sound, favorite: !sound.favorite }); sounds = sounds.map(item => item.id === id ? updated : item); popId = updated.favorite ? id : null; }
   catch (error) { errorAt('#app-error', error); }
   finally { pending.delete(id); render(); }
 }
