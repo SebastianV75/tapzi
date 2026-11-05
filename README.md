@@ -68,7 +68,7 @@ El almacenamiento pertenece al navegador/app instalada y al origen. iOS puede el
 ## Archivos y límites
 
 - Entradas de audio/video: hasta 50 MB. Audios guardados: hasta 25 MB por sonido.
-- Un audio completo compatible se conserva sin conversión. Recortes y videos se decodifican en el dispositivo y se guardan como WAV, hasta 120 segundos; el archivo fuente para conversión debe durar como máximo 10 minutos.
+- Un audio completo compatible se conserva sin conversión. Recortes y videos se decodifican en el dispositivo y se guardan como WAV, hasta 120 segundos; el archivo fuente para conversión debe durar como máximo 10 minutos, salvo los MP3: de esos se corta solo el tramo elegido por bloques, sin decodificar el archivo entero, así que sirven los largos (hasta 50 MB). M4A, WAV y video siguen limitados a 10 minutos.
 - Soporte de formatos según el navegador: MP3, WAV, M4A y MP4 con AAC son los candidatos principales. Un contenedor de video no garantiza que su códec esté soportado. Un fallo muestra un mensaje y no guarda un registro incompleto.
 - Backups: hasta 200 MB y 1000 sonidos. Formato binario versionado, sin base64 ni descompresión. Se valida antes de una única transacción de restauración.
 - El service worker solo guarda los archivos de la interfaz. Los audios viven en IndexedDB; no se cachean YouTube ni APIs.
@@ -84,6 +84,7 @@ El almacenamiento pertenece al navegador/app instalada y al origen. iOS puede el
 - `src/youtube-import.ts`: importación por enlace, acceso, cancelación y entrega al editor local.
 - `api/youtube.ts`, `server/youtube.ts`, `server/cloud-audio.ts`: función Vercel, acceso privado y adaptador TUBE MP3 con descarga acotada.
 - `src/media.ts`: límites, extracción/recorte con Web Audio y codificador WAV.
+- `src/mp3-slice.ts`: localiza los bloques de un MP3 para decodificar solo el fragmento elegido.
 - `src/storage.ts`: IndexedDB y restauración atómica.
 - `src/backup.ts`: formato `.tapzi`, validación y empaquetado.
 - `src/player.ts`: reproducción local y reproductor online opcional.

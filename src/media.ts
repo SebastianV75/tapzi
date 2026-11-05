@@ -1,7 +1,9 @@
 import { MAX_AUDIO_BYTES } from './sounds.ts';
+import { sliceMp3 } from './mp3-slice.ts';
 
 export const MAX_MEDIA_BYTES = 50 * 1024 * 1024;
 export const MAX_CLIP_SECONDS = 120;
+const MAX_DECODE_SECONDS = 600;
 export function isVideo(file: File): boolean {
   return file.type.startsWith('video/') || /\.(mp4|mov|m4v|webm)$/i.test(file.name);
 }
@@ -46,13 +48,20 @@ export async function prepareAudio(file: File, start: number, end: number, durat
     return new File([file], file.name, { type: mediaType(file) });
   }
   if (end - start > MAX_CLIP_SECONDS) throw new Error('Para extraer o recortar, elegí hasta 2 minutos.');
-  if (duration > 600) throw new Error('Para recortar en el teléfono, elegí un archivo de hasta 10 minutos.');
+  // Decoding a long file whole would not fit in a phone's memory. An MP3 can be cut by frames first; other formats cannot.
+  let source: Blob = file, offset = 0;
+  if (duration > MAX_DECODE_SECONDS) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const slice = mediaType(file) === 'audio/mpeg' ? sliceMp3(bytes, start, end) : null;
+    if (!slice) throw new Error('Este formato solo se puede recortar si dura hasta 10 minutos. Prueba con un MP3.');
+    source = new Blob([bytes.subarray(slice.from, slice.to)], { type: 'audio/mpeg' }); offset = slice.offset;
+  }
   const context = new AudioContext({ sampleRate: 44100 });
   try {
-    const decoded = await context.decodeAudioData(await file.arrayBuffer());
-    clipRange(start, end, decoded.duration);
-    const first = Math.floor(start * decoded.sampleRate);
-    const last = Math.min(decoded.length, Math.floor(end * decoded.sampleRate));
+    const decoded = await context.decodeAudioData(await source.arrayBuffer());
+    clipRange(start - offset, end - offset, decoded.duration);
+    const first = Math.floor((start - offset) * decoded.sampleRate);
+    const last = Math.min(decoded.length, Math.floor((end - offset) * decoded.sampleRate));
     const channels = Array.from({ length: Math.min(2, decoded.numberOfChannels) }, (_, i) => decoded.getChannelData(i).subarray(first, last));
     const wav = encodeWav(channels, decoded.sampleRate);
     return new File([wav], `${file.name.replace(/\.[^.]+$/, '')}.wav`, { type: 'audio/wav' });

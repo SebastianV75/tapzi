@@ -1,3 +1,4 @@
+import { sliceMp3 } from '../src/mp3-slice.ts';
 export {};
 const frame = document.querySelector<HTMLIFrameElement>('#app')!;
 const results = document.querySelector<HTMLElement>('#results')!;
@@ -302,6 +303,26 @@ try {
   cloudRealm.fetch = originalFetch;
   await reload(); check(Number(count()) === beforeCloud + 1, 'Imported audio survives reload');
   passed.push('YouTube cloud flow / real MP3 trim and persistence / access / failure / cancellation / no duplicate conversion / offline-link fallback');
+
+  // A file over ten minutes cannot be decoded whole on a phone, yet a short fragment of it must still save.
+  const toneBytes = new Uint8Array(await (await fetch('/tests/fixtures/tone.mp3')).arrayBuffer());
+  const toneAudio = sliceMp3(toneBytes, 0, 1000)!;
+  const longRealm = frame.contentWindow as Window & typeof globalThis;
+  const longFile = new longRealm.File(Array.from({ length: 320 }, () => toneBytes.slice(toneAudio.from, toneAudio.to)), 'conferencia.mp3', { type: 'audio/mpeg' });
+  const beforeLong = Number(count());
+  open();
+  const longTransfer = new longRealm.DataTransfer(); longTransfer.items.add(longFile);
+  $<HTMLInputElement>('#sound-file').files = longTransfer.files;
+  $('#sound-file').dispatchEvent(new longRealm.Event('change', { bubbles: true }));
+  await wait(() => Number($<HTMLInputElement>('#local-end').value) > 0, 'long MP3 metadata');
+  check(Number($<HTMLInputElement>('#local-start').max) > 600, 'The test file is longer than ten minutes');
+  input('#local-start', '400'); input('#local-end', '402'); input('#sound-name', 'Largo'); submit();
+  await wait(() => !$<HTMLDialogElement>('#add-dialog').open, 'trim a long MP3');
+  check(Number(count()) === beforeLong + 1, 'A fragment of a long MP3 saves');
+  $('.pad').click(); await wait(isPlaying, 'long MP3 fragment playback');
+  check(Math.abs(Number(slider().max) - 2) < .1, 'Only the chosen two seconds were kept');
+  $('.stop-all').click();
+  passed.push('Fragment of an MP3 longer than ten minutes decoded without loading the whole file');
 
   for (const width of [320, 360, 390, 1280]) {
     frame.style.width = `${width}px`; await pause();
