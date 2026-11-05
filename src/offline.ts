@@ -15,12 +15,15 @@ export function setupOffline(canUpdate: () => boolean): void {
   if (!window.isSecureContext || !('serviceWorker' in navigator)) { status.textContent = 'Para instalar y abrir sin conexión, abrí Tapzi desde una dirección HTTPS.'; return; }
   void navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(async registration => {
     const offerUpdate = (): void => {
-      if (!registration.waiting) return;
+      // A first install also passes through `waiting`; only an existing controller means there is an older version to replace.
+      if (!registration.waiting || !navigator.serviceWorker.controller) return;
       document.querySelector<HTMLElement>('#update-banner')!.hidden = false;
       document.querySelector<HTMLButtonElement>('#apply-update')!.onclick = () => {
         if (!canUpdate()) { status.textContent = 'Terminá de editar o detené la reproducción antes de actualizar.'; document.querySelector<HTMLElement>('#update-banner')!.firstChild!.textContent = 'Cerrá el editor y detené la reproducción para actualizar. '; return; }
+        // Another tab may have already applied this update.
+        if (!registration.waiting) { location.reload(); return; }
         navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true });
-        registration.waiting?.postMessage('SKIP_WAITING');
+        registration.waiting.postMessage('SKIP_WAITING');
       };
     };
     offerUpdate(); registration.addEventListener('updatefound', () => {
