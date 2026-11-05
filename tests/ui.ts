@@ -131,8 +131,7 @@ try {
   $('#replay-sound').click(); await wait(() => isPlaying() && Number(slider().value) < .5, 'Replay starts from the beginning');
   $('.stop-all').click();
   check($('#mobile-transport').hidden && $<HTMLAudioElement>('#audio-player').paused && !usesMediaElement(), 'Stop releases audio');
-  // A sound that is not decoded yet still plays at once through the media element, and warms itself for the next tap.
-  // Compatibility mode keeps every tap on the media element.
+  // A sound that is not decoded yet decodes for the waiting tap. Compatibility mode keeps every tap on the media element.
   const tapOnce = async (): Promise<boolean> => { $('.pad').click(); await wait(isPlaying, 'tap starts playback'); const element = usesMediaElement(); $('.stop-all').click(); return element; };
   async function openApp(search: string): Promise<void> {
     await new Promise<void>(resolve => { frame.onload = () => resolve(); frame.contentWindow!.location.search = search; });
@@ -143,11 +142,111 @@ try {
   await openApp('');
   let decoded = false;
   for (let attempt = 0; attempt < 40 && !decoded; attempt++) { decoded = !(await tapOnce()); await pause(); }
-  check(decoded, 'After a tap warms it, the sound plays from memory without loading a media element');
+  check(decoded, 'A tap plays the sound from memory without loading a media element');
   $('.pad').click(); $('#play-pause').click(); await pause();
   check($('#player-state').textContent === 'En pausa', 'Paused decoded sound is reflected in the transport');
   $('#play-pause').click(); await wait(isPlaying, 'resume decoded sound'); $('.stop-all').click();
   passed.push('Decoded playback from memory / media-element fallback / compatibility mode / transport');
+
+  // Spamming: every press sounds, however fast, and the sound starts over rather than toggling off.
+  $('.pad').click(); await wait(isPlaying, 'first press');
+  await wait(() => Number(slider().value) > .2, 'sound advances');
+  const board = $('#board'), firstPad = $('.pad');
+  for (let press = 0; press < 7; press++) $('.pad').click();
+  check(isPlaying() && !!doc().querySelector('.sound-card.is-playing'), 'Repeated presses keep the sound playing');
+  check(Number(slider().value) < .15, 'A repeated press starts the sound over');
+  check(doc().querySelectorAll('.pad .ripple').length === 1, 'Ripples do not pile up while spamming');
+  check($('#board') === board && $('.pad') === firstPad, 'Pressing a pad does not rebuild the board under the finger');
+  check($('.pad').getAttribute('aria-label')!.startsWith('Reiniciar'), 'The pad announces what pressing it does now');
+  $('.stop-all').click();
+  check(!doc().querySelector('.sound-card.is-playing') && $('.pad').getAttribute('aria-label')!.startsWith('Reproducir'), 'Stopping clears the pad');
+  // A pointer press and the click browsers send after it are one press.
+  const pressRealm = frame.contentWindow as Window & typeof globalThis;
+  const pointer = (type: string, target: Element): boolean => target.dispatchEvent(new pressRealm.PointerEvent(type, { bubbles: true, pointerId: 7, pointerType: 'touch', button: 0, clientX: 40, clientY: 40 }));
+  pointer('pointerdown', $('.pad'));
+  check($('#mobile-transport').hidden, 'A finger coming down does not fire, since it may be a scroll');
+  pointer('pointerup', $('.pad')); check(!$('#mobile-transport').hidden, 'Lifting the finger fires');
+  $('.stop-all').click(); $('.pad').dispatchEvent(new pressRealm.MouseEvent('click', { bubbles: true, detail: 1 }));
+  check($('#mobile-transport').hidden, 'The trailing click does not fire a second time');
+  pointer('pointerdown', $('.pad')); pointer('pointercancel', $('.pad')); pointer('pointerup', $('.pad'));
+  check($('#mobile-transport').hidden, 'A touch that became a scroll stays silent');
+  $('.pad').click(); check(!$('#mobile-transport').hidden, 'A keyboard press right after a pointer press still counts'); $('.stop-all').click();
+  passed.push('Spam restarts instead of toggling / no board rebuild / touch release and scroll');
+
+  // An audio context can stop responding without any error. The sound must still come out another way.
+  await reload();
+  const stuck = frame.contentWindow as Window & typeof globalThis;
+  Object.defineProperty(stuck.BaseAudioContext.prototype, 'state', { get: () => 'interrupted' });
+  stuck.AudioContext.prototype.resume = () => new Promise<void>(() => undefined);
+  $('.pad').click();
+  await wait(() => usesMediaElement() && isPlaying(), 'stuck audio context falls back to the media element');
+  $('.stop-all').click();
+  await reload();
+  // The fallback continues from where the sound was, not from the top.
+  const seekStuck = frame.contentWindow as Window & typeof globalThis;
+  Object.defineProperty(seekStuck.BaseAudioContext.prototype, 'state', { get: () => 'interrupted' });
+  seekStuck.AudioContext.prototype.resume = () => new Promise<void>(() => undefined);
+  $('.pad').click(); $('#play-pause').click();
+  await wait(() => !slider().disabled, 'paused decoded sound');
+  input('#playback-seek', '1'); $('#play-pause').click();
+  await wait(() => usesMediaElement() && isPlaying(), 'stalled resume falls back');
+  check($<HTMLAudioElement>('#audio-player').currentTime >= 1, 'The fallback keeps the playback position');
+  $('.stop-all').click();
+  await reload();
+  // An output that is slow to open is not a stuck context.
+  const slow = frame.contentWindow as Window & typeof globalThis;
+  const openedAt = Date.now() + 1000;
+  const realState = Object.getOwnPropertyDescriptor(slow.BaseAudioContext.prototype, 'state')!.get!;
+  Object.defineProperty(slow.BaseAudioContext.prototype, 'state', { configurable: true, get(this: BaseAudioContext) { return Date.now() < openedAt ? 'suspended' : realState.call(this); } });
+  const realResume = slow.AudioContext.prototype.resume;
+  slow.AudioContext.prototype.resume = function (this: AudioContext) { return new slow.Promise<void>(resolve => { slow.setTimeout(() => { void realResume.call(this).then(resolve); }, Math.max(0, openedAt - Date.now())); }); };
+  $('.pad').click();
+  const slowUntil = Date.now() + 2700;
+  while (Date.now() < slowUntil) { check(!usesMediaElement() && $('#playback-message').textContent === '', 'A slow first start is left alone'); await pause(); }
+  $('.stop-all').click();
+  await reload();
+  // Touching the screen during an interruption must not end the sound in progress.
+  const calls = frame.contentWindow as Window & typeof globalThis;
+  let interrupted = false, hang = false, closes = 0;
+  const liveState = Object.getOwnPropertyDescriptor(calls.BaseAudioContext.prototype, 'state')!.get!;
+  Object.defineProperty(calls.BaseAudioContext.prototype, 'state', { configurable: true, get(this: BaseAudioContext) { return interrupted ? 'interrupted' : liveState.call(this); } });
+  const liveResume = calls.AudioContext.prototype.resume, liveClose = calls.AudioContext.prototype.close;
+  calls.AudioContext.prototype.resume = function (this: AudioContext) { if (hang) return new calls.Promise<void>(() => undefined); interrupted = false; return liveResume.call(this); };
+  calls.AudioContext.prototype.close = function (this: AudioContext) { closes++; return liveClose.call(this); };
+  $('.pad').click(); await wait(isPlaying, 'sound before interruption'); await new Promise(resolve => setTimeout(resolve, 150));
+  interrupted = true;
+  doc().dispatchEvent(new calls.PointerEvent('pointerdown', { bubbles: true }));
+  await new Promise(resolve => setTimeout(resolve, 800));
+  check(closes === 0 && !usesMediaElement() && isPlaying(), 'A resumable context keeps its sound through a gesture');
+  interrupted = true; hang = true;
+  doc().dispatchEvent(new calls.PointerEvent('pointerdown', { bubbles: true }));
+  await wait(() => closes === 1 && usesMediaElement(), 'A sound on a context that never resumes moves to the media element');
+  $('.stop-all').click();
+  await reload();
+  // Decoding that cannot finish or succeed. The sound is added after the patch so it cannot already be in memory.
+  const addUndecoded = async (patchDecode: () => Promise<AudioBuffer>, duration: number): Promise<{ id: string; remove: (id: string) => Promise<void> }> => {
+    const live = frame.contentWindow as Window & typeof globalThis;
+    live.OfflineAudioContext.prototype.decodeAudioData = patchDecode;
+    const store = await live.eval(`import('/src/storage.ts')`) as typeof import('../src/storage.ts');
+    const made = await live.eval(`import('/src/sounds.ts')`) as typeof import('../src/sounds.ts');
+    const sound = { ...made.createSound({ name: 'Sin decodificar', source: 'local', file: wav() }), duration } as import('../src/sounds.ts').Sound;
+    await store.saveSound(sound);
+    doc().dispatchEvent(new live.Event('visibilitychange'));
+    await wait(() => $('.pad-name').textContent === 'Sin decodificar', 'undecoded sound listed');
+    return { id: sound.id, remove: store.removeSound };
+  };
+  const long = await addUndecoded(() => new Promise<AudioBuffer>(() => undefined), 60);
+  $('.pad').click();
+  check(usesMediaElement(), 'A long sound starts on the media element within the gesture, without waiting to decode');
+  $('.stop-all').click(); await long.remove(long.id); await reload();
+  const held = await addUndecoded(() => Promise.reject(new Error('Unreadable')), 5);
+  $('.pad').click(); $('#play-pause').click();
+  await wait(usesMediaElement, 'failed decode falls back');
+  await pause(); await pause();
+  check($<HTMLAudioElement>('#audio-player').paused && $('#play-pause').getAttribute('aria-label') === 'Continuar reproducción', 'A pause pressed while loading survives the fallback');
+  $('#play-pause').click(); await wait(() => !$<HTMLAudioElement>('#audio-player').paused, 'continue after the fallback');
+  $('.stop-all').click(); await held.remove(held.id); await reload();
+  passed.push('Stuck context fallback keeps position / slow start tolerated / interruption survives a gesture / long sounds keep the gesture / pause while loading');
 
   // Motion carries information: newcomers arrive once, the playing sound fills as it progresses, and every press answers.
   await reload();

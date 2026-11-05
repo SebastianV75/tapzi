@@ -26,7 +26,6 @@ const engine = createSoundEngine();
 let sounds: Sound[] = [];
 const seen = new Set<string>(); // sounds already shown once, so only newcomers animate in
 let popId: string | null = null; // the sound whose star was just switched on
-let tap: { id: string; x: number; y: number } | null = null; // where the last press landed, for the ripple
 const motionOK = matchMedia('(prefers-reduced-motion: no-preference)');
 let favoritesOnly = false;
 let activeId: string | null = null;
@@ -67,6 +66,18 @@ function setBusy(target: HTMLElement, busy: boolean): void {
   target.setAttribute('aria-busy', String(busy));
   target.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input,button').forEach(node => { node.disabled = busy; });
 }
+/** Shows whether a pad is the one playing. Pressing a playing local sound restarts it; a YouTube one has no such shortcut. */
+function paintPad(card: HTMLElement, pad: HTMLElement, sound: Sound): void {
+  const active = sound.id === activeId;
+  card.classList.toggle('is-playing', active);
+  if (active && sound.source === 'local') card.style.setProperty('--p', '0');
+  else card.style.removeProperty('--p');
+  if (!active) card.classList.remove('is-paused');
+  pad.setAttribute('aria-label', `${!active ? 'Reproducir' : sound.source === 'local' ? 'Reiniciar' : 'Detener'} ${sound.name}`);
+  pad.setAttribute('aria-pressed', String(active));
+  pad.querySelector('.eq')?.remove();
+  if (active) { const bars = text('span', 'eq', ''); bars.setAttribute('aria-hidden', 'true'); bars.append(...[0, 1, 2, 3].map(() => document.createElement('i'))); pad.append(bars); }
+}
 function render(): void {
   engine?.sync(sounds);
   const focus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -81,23 +92,11 @@ function render(): void {
   for (const [id, selected] of [['#all-filter', !favoritesOnly], ['#favorite-filter', favoritesOnly]] as const) { $(id).setAttribute('aria-pressed', String(selected)); $(id).classList.toggle('selected', selected); }
   let arrival = 0;
   for (const sound of visible) {
-    const card = document.createElement('li'); card.className = `sound-card${sound.id === activeId ? ' is-playing' : ''}`; card.dataset.color = sound.color ?? 'lavender';
+    const card = document.createElement('li'); card.className = 'sound-card'; card.dataset.color = sound.color ?? 'lavender';
     if (!seen.has(sound.id)) { seen.add(sound.id); card.classList.add('is-new'); card.style.setProperty('--i', String(Math.min(arrival++, 14))); }
-    if (sound.id === activeId && sound.source === 'local') card.style.setProperty('--p', '0');
     const pad = document.createElement('button'); pad.className = 'pad'; pad.dataset.soundId = sound.id; pad.dataset.action = 'play';
-    pad.setAttribute('aria-label', `${sound.id === activeId ? 'Detener' : 'Reproducir'} ${sound.name}`); pad.setAttribute('aria-pressed', String(sound.id === activeId));
     pad.append(text('span', 'pad-name', sound.name));
-    if (sound.id === activeId) { const bars = text('span', 'eq', ''); bars.setAttribute('aria-hidden', 'true'); bars.append(...[0, 1, 2, 3].map(() => document.createElement('i'))); pad.append(bars); }
-    if (tap?.id === sound.id && motionOK.matches) {
-      const wave = text('span', 'ripple', ''); wave.setAttribute('aria-hidden', 'true'); wave.style.left = `${tap.x}px`; wave.style.top = `${tap.y}px`;
-      wave.addEventListener('animationend', () => wave.remove(), { once: true }); pad.append(wave);
-    }
-    pad.addEventListener('click', event => {
-      const box = pad.getBoundingClientRect(), keyboard = event.detail === 0;
-      tap = { id: sound.id, x: keyboard ? box.width / 2 : event.clientX - box.left, y: keyboard ? box.height / 2 : event.clientY - box.top };
-      navigator.vibrate?.(8); // Android only; iOS Safari has no vibration API
-      clipEditor.pause(); if (activeId === sound.id) player.stop(); else void player.play(sound);
-    });
+    paintPad(card, pad, sound);
     const favorite = document.createElement('button'); favorite.className = `favorite-button${sound.favorite ? ' is-favorite' : ''}${sound.id === popId ? ' pop' : ''}`;
     favorite.dataset.soundId = sound.id; favorite.dataset.action = 'favorite'; favorite.disabled = pending.has(sound.id);
     favorite.setAttribute('aria-label', `${sound.favorite ? 'Quitar de' : 'Agregar a'} favoritos: ${sound.name}`); favorite.setAttribute('aria-pressed', String(sound.favorite)); favorite.append(icon('star'));
@@ -106,11 +105,18 @@ function render(): void {
     more.setAttribute('aria-label', `Editar ${sound.name}`); more.append(icon('more')); more.addEventListener('click', () => openEdit(sound.id));
     card.append(pad, favorite, more); board.append(card);
   }
-  tap = null; popId = null;
+  popId = null;
   if (focusId) [...board.querySelectorAll('button')].find(button => button.dataset.soundId === focusId && button.dataset.action === action)?.focus({ preventScroll: true });
 }
+const padFor = (id: string): HTMLElement | null => document.querySelector<HTMLElement>(`.pad[data-sound-id="${CSS.escape(id)}"]`);
 const player = createPlayer(id => {
-  activeId = id; render(); $('#mobile-transport').hidden = !id;
+  // Only the two pads that changed are touched. Rebuilding the board here would cost every tap a full layout.
+  const changed = [activeId, id]; activeId = id;
+  for (const soundId of changed) {
+    const pad = soundId && padFor(soundId), sound = sounds.find(item => item.id === soundId);
+    if (pad && sound) paintPad(pad.closest<HTMLElement>('.sound-card')!, pad, sound);
+  }
+  $('#mobile-transport').hidden = !id;
   document.body.classList.toggle('has-playback', !!id);
 }, engine, (fraction, paused) => {
   const card = document.querySelector<HTMLElement>('.sound-card.is-playing');
@@ -118,6 +124,58 @@ const player = createPlayer(id => {
   card.style.setProperty('--p', fraction.toFixed(3)); card.classList.toggle('is-paused', paused);
 });
 document.querySelectorAll('.stop-all').forEach(button => button.addEventListener('click', player.stop));
+function pressPad(pad: HTMLElement, x: number, y: number): void {
+  const sound = sounds.find(item => item.id === pad.dataset.soundId); if (!sound) return;
+  clipEditor.pause();
+  if (activeId === sound.id && sound.source === 'youtube') player.stop(); else void player.play(sound);
+  navigator.vibrate?.(8); // Android only; iOS Safari has no vibration API
+  if (!motionOK.matches) return;
+  pad.querySelector('.ripple')?.remove(); // one at a time, however fast the pad is pressed
+  const box = pad.getBoundingClientRect(), wave = text('span', 'ripple', ''); wave.setAttribute('aria-hidden', 'true'); wave.style.left = `${x - box.left}px`; wave.style.top = `${y - box.top}px`;
+  wave.addEventListener('animationend', () => wave.remove(), { once: true }); pad.append(wave);
+}
+// Pads respond to the press itself rather than to `click`, which browsers delay and drop when fingers overlap.
+// A mouse fires on the way down. A finger fires on touchend, because the same touch might be starting a scroll and
+// because iOS accepts touchend, not pointerup, as permission to start a media element.
+const SCROLL_SLOP = 12;
+const presses = new Map<number, { pad: HTMLElement; x: number; y: number; fired: boolean }>();
+const touches = new Map<number, { pad: HTMLElement; x: number; y: number; scroll: number }>();
+let lastRelease = -Infinity;
+const padAt = (target: EventTarget | null): HTMLElement | null => target instanceof Element ? target.closest<HTMLElement>('.pad') : null;
+$('#board').addEventListener('pointerdown', event => {
+  const pad = padAt(event.target); if (!pad || event.button !== 0) return;
+  if (event.pointerType === 'touch' && 'ontouchstart' in window) return; // touch events below handle it
+  const fired = event.pointerType === 'mouse';
+  presses.set(event.pointerId, { pad, x: event.clientX, y: event.clientY, fired });
+  if (fired) pressPad(pad, event.clientX, event.clientY);
+});
+document.addEventListener('pointerup', event => {
+  const press = presses.get(event.pointerId); if (!press) return;
+  presses.delete(event.pointerId); lastRelease = event.timeStamp;
+  if (!press.fired && Math.hypot(event.clientX - press.x, event.clientY - press.y) <= SCROLL_SLOP) pressPad(press.pad, event.clientX, event.clientY);
+});
+document.addEventListener('pointercancel', event => { presses.delete(event.pointerId); });
+$('#board').addEventListener('touchstart', event => {
+  for (const touch of event.changedTouches) {
+    const pad = padAt(touch.target);
+    if (pad) touches.set(touch.identifier, { pad, x: touch.clientX, y: touch.clientY, scroll: scrollY });
+  }
+}, { passive: true });
+document.addEventListener('touchend', event => {
+  for (const touch of event.changedTouches) {
+    const press = touches.get(touch.identifier); if (!press) continue;
+    touches.delete(touch.identifier); lastRelease = event.timeStamp;
+    // The page having moved also catches a tap that only stops a scroll still gliding.
+    if (Math.hypot(touch.clientX - press.x, touch.clientY - press.y) <= SCROLL_SLOP && Math.abs(scrollY - press.scroll) <= 2) pressPad(press.pad, touch.clientX, touch.clientY);
+  }
+}, { passive: true });
+document.addEventListener('touchcancel', event => { for (const touch of event.changedTouches) touches.delete(touch.identifier); }, { passive: true });
+// Keyboards and screen readers only send `click`. A click from a pointer is that same press arriving late.
+$('#board').addEventListener('click', event => {
+  const pad = padAt(event.target); if (!pad || (event.detail > 0 && event.timeStamp - lastRelease < 500)) return;
+  const box = pad.getBoundingClientRect();
+  pressPad(pad, event.detail === 0 ? box.left + box.width / 2 : event.clientX, event.detail === 0 ? box.top + box.height / 2 : event.clientY);
+});
 async function toggleFavorite(id: string): Promise<void> {
   if (pending.has(id)) return;
   const sound = sounds.find(item => item.id === id); if (!sound) return;

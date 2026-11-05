@@ -127,6 +127,23 @@ try {
     if (await evaluate(`document.querySelector('#mobile-transport').hidden || Boolean(document.querySelector('#playback-message').textContent)`)) throw new Error('Rapid pause hid the player or displayed an error');
     await writeFile('.cache/tapzi-player.png', Buffer.from((await call('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
     await evaluate(`document.querySelector('.stop-all').click()`);
+    // Real touch input: synthetic events cannot show that a finger fires exactly once and that a scroll stays silent.
+    await call('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    const touchLoaded = nextEvent('Page.loadEventFired', sessionId);
+    await call('Page.reload'); await touchLoaded;
+    await evaluate(`new Promise(resolve => { const check = () => document.querySelector('#total')?.textContent === '3' ? resolve(true) : setTimeout(check, 25); check(); })`);
+    const padPoint = await evaluate(`(() => { const box = document.querySelector('.pad').getBoundingClientRect(); return { x: box.left + box.width / 2, y: box.top + box.height / 2 }; })()`);
+    await evaluate(`void (window.starts = 0); { const start = AudioBufferSourceNode.prototype.start; AudioBufferSourceNode.prototype.start = function (...args) { window.starts++; return start.apply(this, args); }; }`);
+    const touch = (type, points) => call('Input.dispatchTouchEvent', { type, touchPoints: points });
+    await touch('touchStart', [{ ...padPoint, id: 0 }]); await touch('touchMove', [{ x: padPoint.x, y: padPoint.y - 40, id: 0 }]); await touch('touchEnd', []);
+    if (!(await evaluate(`document.querySelector('#mobile-transport').hidden`))) throw new Error('A touch that moved must not fire a pad');
+    await touch('touchStart', [{ ...padPoint, id: 0 }]); await touch('touchEnd', []);
+    await evaluate(`new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error('A real tap did not play')), 4000); const check = () => { if (window.starts > 0) { clearTimeout(timer); resolve(true); } else setTimeout(check, 15); }; check(); })`);
+    await evaluate(`new Promise(resolve => setTimeout(resolve, 150))`);
+    if ((await evaluate(`window.starts`)) !== 1) throw new Error('A real tap and its trailing click must start one sound');
+    await evaluate(`document.querySelector('.stop-all').click()`);
+    await call('Emulation.setTouchEmulationEnabled', { enabled: false });
+    console.log('PASS real touch input: tap fires once / moved touch stays silent');
     await call('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
     await writeFile('.cache/tapzi-desktop.png', Buffer.from((await call('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });

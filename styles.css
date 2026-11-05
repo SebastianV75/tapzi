@@ -34,7 +34,7 @@ html { overscroll-behavior: none; -webkit-tap-highlight-color: transparent; scro
 body { margin: 0; min-width: 280px; min-height: 100dvh; line-height: 1.5; padding: env(safe-area-inset-top) max(32px, env(safe-area-inset-right)) 0 max(32px, env(safe-area-inset-left)); }
 button, input, select { font: inherit; color: inherit; }
 button, summary, a { touch-action: manipulation; }
-button { cursor: pointer; -webkit-user-select: none; user-select: none; }
+button { cursor: pointer; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 button:disabled { opacity: .48; cursor: wait; }
 button, input, video { max-width: 100%; }
 a { color: inherit; }
