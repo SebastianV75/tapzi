@@ -1,11 +1,7 @@
 interface InstallEvent extends Event { prompt(): Promise<void>; userChoice: Promise<{ outcome: string }> }
 export function setupOffline(canUpdate: () => boolean): void {
   const status = document.querySelector<HTMLElement>('#offline-status')!;
-  const connection = document.querySelector<HTMLElement>('#connection')!;
   const install = document.querySelector<HTMLButtonElement>('#install-app')!;
-  let ready = false;
-  const updateStatus = (): void => { connection.textContent = !navigator.onLine ? 'Sin conexión · audio local' : ready ? 'Lista sin conexión' : 'En este dispositivo'; };
-  window.addEventListener('online', updateStatus); window.addEventListener('offline', updateStatus); updateStatus();
   window.addEventListener('beforeinstallprompt', event => {
     event.preventDefault(); install.hidden = false;
     install.onclick = () => { void (event as InstallEvent).prompt(); };
@@ -29,7 +25,7 @@ export function setupOffline(canUpdate: () => boolean): void {
     offerUpdate(); registration.addEventListener('updatefound', () => {
       registration.installing?.addEventListener('statechange', offerUpdate);
     });
-    await navigator.serviceWorker.ready; ready = true; updateStatus();
+    await navigator.serviceWorker.ready;
     status.textContent = 'Lista sin conexión. Los audios guardados funcionan sin internet; YouTube necesita conexión.';
   }).catch(() => { status.textContent = 'No se pudo preparar el modo sin conexión. Revisá tu conexión y volvé a abrir Tapzi.'; });
 }

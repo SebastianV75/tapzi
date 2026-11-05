@@ -144,9 +144,9 @@ try {
   for (let attempt = 0; attempt < 40 && !decoded; attempt++) { decoded = !(await tapOnce()); await pause(); }
   check(decoded, 'After a tap warms it, the sound plays from memory without loading a media element');
   $('.pad').click(); $('#play-pause').click(); await pause();
-  check($('#player-state').textContent === 'En pausa' && $('.is-playing .pad-meta').textContent === 'En pausa', 'Paused decoded sound is reflected on its pad');
+  check($('#player-state').textContent === 'En pausa', 'Paused decoded sound is reflected in the transport');
   $('#play-pause').click(); await wait(isPlaying, 'resume decoded sound'); $('.stop-all').click();
-  passed.push('Decoded playback from memory / media-element fallback / compatibility mode / transport / pad labels');
+  passed.push('Decoded playback from memory / media-element fallback / compatibility mode / transport');
   $('.favorite-button').click(); await wait(() => $('.favorite-button').getAttribute('aria-pressed') === 'true', 'favorite commit');
   input('#search', 'epico'); check(doc().querySelectorAll('.pad').length === 1, 'Accent-insensitive search');
   input('#search', 'absent'); check(!$('#no-results').hidden, 'No results'); $('#clear-filter').click();

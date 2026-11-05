@@ -55,7 +55,7 @@ function element<T extends HTMLElement>(selector: string): T {
   if (!found) throw new Error(`Missing player element: ${selector}`);
   return found;
 }
-export function createPlayer(onChange: (id: string | null) => void, engine: SoundEngine | null = null, onPauseChange: () => void = () => undefined): { play(sound: Sound): Promise<void>; stop(): void; paused(): boolean } {
+export function createPlayer(onChange: (id: string | null) => void, engine: SoundEngine | null = null): { play(sound: Sound): Promise<void>; stop(): void } {
   const audio = element<HTMLAudioElement>('#audio-player');
   const wrapper = element('#youtube-wrap');
   const idle = element('#idle-player');
@@ -86,7 +86,6 @@ export function createPlayer(onChange: (id: string | null) => void, engine: Soun
   const pauseState = (): void => {
     pauseButton.setAttribute('aria-label', isPaused() ? 'Continuar reproducción' : 'Pausar');
     pauseButton.querySelector('use')!.setAttribute('href', isPaused() ? '#i-play' : '#i-pause');
-    onPauseChange();
   };
   // Decoded playback raises no media events, so the transport is refreshed after each action and on a short timer.
   const voiceChanged = (): void => {
@@ -231,5 +230,5 @@ export function createPlayer(onChange: (id: string | null) => void, engine: Soun
       if (token === request && !interrupted(error)) fail(error instanceof Error ? error : new Error('No se pudo iniciar la reproducción. Intentá otra vez.'));
     }
   }
-  return { play, stop, paused: () => current?.source === 'local' && isPaused() };
+  return { play, stop };
 }

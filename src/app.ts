@@ -71,21 +71,15 @@ function render(): void {
   const visible = sounds.filter(sound => (!favoritesOnly || sound.favorite) && matchesSound(sound, search.value));
   $('#total').textContent = String(sounds.length);
   $('#empty').hidden = sounds.length !== 0;
-  $('.library-footer').hidden = !sounds.length;
   $('#no-results-title').textContent = favoritesOnly && !search.value.trim() ? 'Tus favoritos van aquí' : 'No encontramos ese sonido';
   $('#no-results-description').textContent = favoritesOnly && !search.value.trim() ? 'Toca la estrella de un sonido para tenerlo siempre a mano.' : 'Prueba con otro nombre o vuelve a verlos todos.'; $('#no-results').hidden = sounds.length === 0 || visible.length !== 0;
   board.hidden = visible.length === 0; board.setAttribute('aria-busy', 'false');
   for (const [id, selected] of [['#all-filter', !favoritesOnly], ['#favorite-filter', favoritesOnly]] as const) { $(id).setAttribute('aria-pressed', String(selected)); $(id).classList.toggle('selected', selected); }
-  const positions = new Map(sounds.map((sound, index) => [sound.id, String(index + 1).padStart(2, '0')]));
   for (const sound of visible) {
     const card = document.createElement('li'); card.className = `sound-card${sound.id === activeId ? ' is-playing' : ''}`; card.dataset.color = sound.color ?? 'lavender';
     const pad = document.createElement('button'); pad.className = 'pad'; pad.dataset.soundId = sound.id; pad.dataset.action = 'play';
     pad.setAttribute('aria-label', `${sound.id === activeId ? 'Detener' : 'Reproducir'} ${sound.name}`); pad.setAttribute('aria-pressed', String(sound.id === activeId));
-    const top = text('span', 'pad-top', ''); const playIcon = text('span', 'pad-icon', ''); playIcon.append(icon(sound.id === activeId ? 'stop' : 'wave'));
-    const position = text('span', 'pad-index', positions.get(sound.id) ?? ''); position.setAttribute('aria-hidden', 'true');
-    top.append(playIcon, position);
-    const detail = sound.id === activeId ? (sound.source === 'local' && player.paused() ? 'En pausa' : 'Sonando ahora') : sound.source === 'youtube' ? 'YouTube · online' : sound.duration ? formatTime(sound.duration) : 'Audio';
-    pad.append(top, text('span', 'pad-name', sound.name), text('span', 'pad-meta', detail));
+    pad.append(text('span', 'pad-name', sound.name));
     pad.addEventListener('click', () => { clipEditor.pause(); if (activeId === sound.id) player.stop(); else void player.play(sound); });
     const favorite = document.createElement('button'); favorite.className = `favorite-button${sound.favorite ? ' is-favorite' : ''}`;
     favorite.dataset.soundId = sound.id; favorite.dataset.action = 'favorite'; favorite.disabled = pending.has(sound.id);
@@ -100,10 +94,7 @@ function render(): void {
 const player = createPlayer(id => {
   activeId = id; render(); $('#mobile-transport').hidden = !id;
   document.body.classList.toggle('has-playback', !!id);
-}, engine, () => {
-  const label = document.querySelector<HTMLElement>('.is-playing .pad-meta');
-  if (label && sounds.find(sound => sound.id === activeId)?.source === 'local') label.textContent = player.paused() ? 'En pausa' : 'Sonando ahora';
-});
+}, engine);
 document.querySelectorAll('.stop-all').forEach(button => button.addEventListener('click', player.stop));
 async function toggleFavorite(id: string): Promise<void> {
   if (pending.has(id)) return;
