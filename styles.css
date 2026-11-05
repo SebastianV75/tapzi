@@ -289,3 +289,9 @@ body:has(.transport:not([hidden])) .toast { bottom: 150px; }
 .video-preview-wrap { margin: 0 0 12px; }
 .video-preview-wrap > summary { min-height: 44px; padding-block: 12px; cursor: pointer; color: var(--muted); font-size: 12px; }
 .video-preview-wrap[open] > summary { margin-bottom: 8px; }
+.youtube-import-controls { padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: #e9dff550; }
+.youtube-import-controls > .button { width: 100%; margin-top: 16px; }
+.youtube-import-progress { margin-top: 14px; font-size: 13px; color: var(--muted); text-align: center; }
+.online-choice { display: flex; align-items: center; gap: 10px; min-height: 52px; padding-bottom: 8px; font-size: 13px; cursor: pointer; }
+.online-choice input { width: 20px; height: 20px; margin: 12px 2px; accent-color: var(--accent); flex-shrink: 0; }
+.online-choice small { margin-top: 2px; }

@@ -26,11 +26,12 @@ try {
     ]);
     browserExited = new Promise(resolve => browser.once('exit', resolve));
     let stderr = '';
+    let connected = false;
     deadline = setTimeout(() => { browser.kill('SIGKILL'); reject(new Error('Chromium startup timed out')); }, 15000);
     browser.stderr.on('data', chunk => {
       stderr += chunk;
       const match = stderr.match(/DevTools listening on (ws:\/\/[^\s]+)/);
-      if (match) { clearTimeout(deadline); resolve(match[1]); }
+      if (match && !connected) { connected = true; clearTimeout(deadline); resolve(match[1]); }
     });
     browser.on('error', reject);
   });
@@ -144,7 +145,13 @@ try {
     if (!(await evaluate(`Number(document.querySelector('#local-start').value) > 0`))) throw new Error('Keyboard range selection did not update the clip');
     await evaluate(`document.querySelector('#close-dialog').click(); document.querySelector('#confirm-discard').click()`);
     console.log('PASS production file chooser / native keyboard trim / mobile and desktop visual captures');
-
+    await call('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+    await evaluate(`[...document.querySelectorAll('.add-trigger')].find(node => node.checkVisibility()).click(); document.querySelector('input[value="youtube"]').click()`);
+    await evaluate(`new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error('YouTube status did not settle')), 8000); const check = () => { if (!document.querySelector('#youtube-status').textContent.includes('Comprobando')) { clearTimeout(timer); resolve(true); } else setTimeout(check, 25); }; check(); })`);
+    if (!(await evaluate(`document.querySelector('#fetch-youtube').disabled && document.querySelector('#youtube-status').textContent.includes('no está activada')`))) throw new Error('Unconfigured production importer must stay disabled');
+    await writeFile('.cache/tapzi-youtube.png', Buffer.from((await call('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+    await evaluate(`document.querySelector('#close-dialog').click()`);
+    console.log('PASS production importer configuration / no credentials required for local-only use');
   }
 } finally {
   clearTimeout(deadline);

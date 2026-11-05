@@ -4,3 +4,6 @@ dist/
 .tools/
 .atl/
 *.log
+.env*
+!.env.example
+.vercel/

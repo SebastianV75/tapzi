@@ -1,6 +1,6 @@
 # Tapzi
 
-Tu botonera personal de bolsillo. Web estática en TypeScript: **sin cuentas, API de conversión, servidor de audio ni suscripciones**. Diseñada para instalar en el iPhone y reproducir la colección sin conexión.
+Tu botonera personal de bolsillo, en TypeScript. Diseñada para instalar en el iPhone y reproducir la colección sin conexión. Los archivos locales funcionan **sin cuentas ni servicios externos**. La importación opcional de YouTube usa una función en Vercel y una API de descarga; requiere configuración y no presupone un plan gratuito del proveedor.
 
 ## Usarla
 
@@ -12,7 +12,7 @@ Tu botonera personal de bolsillo. Web estática en TypeScript: **sin cuentas, AP
 
 La botonera comienza vacía. **Probar con tres sonidos** crea tres tonos originales localmente; no descarga contenido de terceros.
 
-**YouTube** es una opción online separada: guarda un enlace y usa el reproductor visible. No descarga audio, necesita internet y algunos videos restringen su reproducción. Los sonidos guardados en versiones anteriores se conservan.
+**YouTube:** cuando la importación está activada, pega el enlace, toca **Obtener audio** y escucha/recorta antes de guardar. El audio queda en el dispositivo y funciona offline. **Guardar sin descargar** conserva la opción de enlace con reproductor visible: necesita internet y algunos videos restringen la reproducción. Los sonidos anteriores se conservan. Configuración y límites en [Importar YouTube en Vercel](docs/youtube-cloud.md).
 
 ## Ejecutar y verificar
 
@@ -42,6 +42,8 @@ npm run test:browser     # requiere el build y Chromium
 `CHROMIUM=/ruta/a/chromium` permite elegir el ejecutable. Las pruebas usan perfiles descartables, archivos sintéticos y un servidor local temporal. Verifican recorte real de WAV, extracción de audio AAC de un MP4, reproducción, persistencia, edición, borrado/deshacer, restauración, protección contra duplicados, y tamaños de 320 a 1280 px. También verifican el selector progresivo, límites que no se cruzan, protección del borrador, cambio de archivo conservando el nombre, recortes de 50 ms, pausa inmediata sin errores y controles de reproducción. En producción se comprueban el selector de archivos y el teclado nativo para recortar. El test de producción abandona la página y vuelve a abrirla con la red desactivada, verificando reproducción desde IndexedDB. YouTube usa un doble de prueba; no hay conversiones ni solicitudes a proveedores externos durante los tests.
 
 ## Publicar sin backend
+
+Este modo incluye archivos locales y enlaces online. Para descargar audio desde YouTube, despliega el repositorio completo en Vercel siguiendo [esta guía](docs/youtube-cloud.md); subir solo `dist/` no instala la función de importación.
 
 El resultado completo está en **`dist/`**. Publicá su contenido en la raíz de cualquier alojamiento estático con **HTTPS**. No requiere Node, Docker, Coolify, Dokploy, variables secretas o una base de datos en el alojamiento. El sitio se necesita para la primera apertura y las actualizaciones; después de «Lista sin conexión», los audios guardados y la app funcionan offline.
 
@@ -78,6 +80,8 @@ El almacenamiento pertenece al navegador/app instalada y al origen. iOS puede el
 
 - `src/app.ts`: biblioteca, diálogos y gestión de colección.
 - `src/clip-editor.ts`: selector progresivo, preescucha, límites visuales, reemplazo de archivo y forma de onda real opcional (archivos cortos de hasta 8 MB).
+- `src/youtube-import.ts`: importación por enlace, acceso, cancelación y entrega al editor local.
+- `api/youtube.ts`, `server/youtube.ts`, `server/cloud-audio.ts`: función Vercel, acceso privado y adaptador TUBE MP3 con descarga acotada.
 - `src/media.ts`: límites, extracción/recorte con Web Audio y codificador WAV.
 - `src/storage.ts`: IndexedDB y restauración atómica.
 - `src/backup.ts`: formato `.tapzi`, validación y empaquetado.

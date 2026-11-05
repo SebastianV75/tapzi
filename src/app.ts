@@ -6,6 +6,7 @@ import { prepareAudio, encodeWav } from './media.ts';
 import { makeBackup, readBackup } from './backup.ts';
 import { setupOffline } from './offline.ts';
 import { createClipEditor } from './clip-editor.ts';
+import { createYouTubeImport } from './youtube-import.ts';
 
 function $<T extends HTMLElement = HTMLElement>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -112,16 +113,25 @@ async function toggleFavorite(id: string): Promise<void> {
 }
 function updateSource(): void {
   const local = source() === 'local';
+  const online = input('#youtube-online').checked;
   $('#local-fields').hidden = !local; $('#youtube-fields').hidden = local;
-  const showDetails = !local || clipEditor.ready();
+  $('#youtube-import-controls').hidden = online;
+  $('#trim-options').hidden = !online;
+  const showDetails = local ? clipEditor.ready() : online;
   $('#sound-details').hidden = !showDetails; $('#add-actions').hidden = !showDetails;
   $('.source-options').hidden = local && clipEditor.ready();
-  $('#dialog-title').textContent = local && showDetails ? 'Ya casi es tuyo.' : local ? 'Dale un lugar a ese audio.' : 'Agrega un enlace.';
-  $('#dialog-description').textContent = local && showDetails ? 'Escúchalo, ponle un nombre y guárdalo.' : local ? 'Elige un audio o video de tu dispositivo.' : 'Se guardará para reproducirlo con YouTube.';
+  $('#dialog-title').textContent = local && showDetails ? 'Ya casi es tuyo.' : local ? 'Dale un lugar a ese audio.' : online ? 'Guarda el enlace.' : 'De enlace a sonido.';
+  $('#dialog-description').textContent = local && showDetails ? 'Escúchalo, ponle un nombre y guárdalo.' : local ? 'Elige un audio o video de tu dispositivo.' : online ? 'Necesitarás internet para reproducirlo con YouTube.' : 'Pega el enlace. Después podrás escucharlo y recortarlo.';
+  $('#youtube-help').textContent = online ? 'Solo guarda el enlace. No descarga audio.' : 'El audio se guardará en tu dispositivo cuando confirmes.';
   $('#add-step').textContent = showDetails ? 'DALE TU TOQUE' : 'NUEVO SONIDO';
 }
 const clipEditor = createClipEditor({ onReady: updateSource, onError: formError });
+const youtubeImport = createYouTubeImport({
+  onFile(file) { input('input[name="source"][value="local"]').checked = true; clipEditor.loadFile(file); updateSource(); },
+  onError: formError,
+});
 function openAdd(): void {
+  youtubeImport.reset();
   form.reset(); form.querySelectorAll('details').forEach(details => { details.open = false; });
   clipEditor.reset(); updateSource(); player.stop(); formError(null);
   $('#discard-prompt').hidden = true; form.inert = false;
@@ -130,20 +140,30 @@ function openAdd(): void {
 document.querySelectorAll<HTMLButtonElement>('.add-trigger').forEach(button => { button.disabled = true; button.addEventListener('click', openAdd); });
 function closeAdd(): void {
   if (saving) return;
+  youtubeImport.cancel();
   if (!clipEditor.getFile() && !input('#sound-name').value.trim() && !input('#sound-url').value.trim()) { dialog.close(); return; }
   clipEditor.pause(); $('#discard-prompt').hidden = false; form.inert = true; $('#keep-editing').focus();
 }
 for (const id of ['#close-dialog', '#cancel-dialog']) $(id).addEventListener('click', closeAdd);
-$('#keep-editing').addEventListener('click', () => { $('#discard-prompt').hidden = true; form.inert = false; ($('#sound-details').hidden ? clipEditor.getFile() ? $('#change-file') : $('#sound-file') : $('#sound-name')).focus(); });
+$('#keep-editing').addEventListener('click', () => { $('#discard-prompt').hidden = true; form.inert = false; ($('#sound-details').hidden ? source() === 'youtube' ? $('#sound-url') : clipEditor.getFile() ? $('#change-file') : $('#sound-file') : $('#sound-name')).focus(); });
 $('#confirm-discard').addEventListener('click', () => dialog.close());
 dialog.addEventListener('cancel', event => { event.preventDefault(); closeAdd(); });
-dialog.addEventListener('close', () => { clipEditor.reset(); form.inert = false; });
+dialog.addEventListener('close', () => {
+  // Native close events are queued. A rapid reopen already initialized a new draft.
+  if (dialog.open) return;
+  youtubeImport.reset(); clipEditor.reset(); form.inert = false;
+});
 form.addEventListener('change', event => {
-  if (event.target instanceof HTMLInputElement && event.target.name === 'source') { clipEditor.pause(); updateSource(); formError(null); }
+  if (event.target instanceof HTMLInputElement && event.target.name === 'source') {
+    youtubeImport.cancel(); clipEditor.pause(); updateSource(); formError(null);
+    if (source() === 'youtube') { void youtubeImport.refresh(); input('#sound-url').focus(); }
+  }
+  if (event.target === input('#youtube-online')) { updateSource(); formError(null); }
 });
 form.addEventListener('input', () => formError(null));
 form.addEventListener('submit', async event => {
   event.preventDefault(); if (saving) return;
+  if (source() === 'youtube' && !input('#youtube-online').checked) { await youtubeImport.start(); return; }
   formError(null);
   const name = input('#sound-name').value.trim();
   if (!name || name.length > 60) { formError(new Error('Ponle un nombre de hasta 60 caracteres.'), '#sound-name'); return; }

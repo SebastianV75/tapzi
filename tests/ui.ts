@@ -143,7 +143,7 @@ try {
   await reload(); check(count() === '1' && $('.sound-card').dataset.color === 'mint', 'Undo and edit persist');
   passed.push('Rename / color / safe text / delete / undo');
 
-  open(); $<HTMLInputElement>('input[value="youtube"]').click(); input('#sound-name', 'Online'); input('#sound-url', 'https://youtube.com.evil.test/watch?v=dQw4w9WgXcQ'); submit();
+  open(); $<HTMLInputElement>('input[value="youtube"]').click(); $<HTMLInputElement>('#youtube-online').click(); input('#sound-name', 'Online'); input('#sound-url', 'https://youtube.com.evil.test/watch?v=dQw4w9WgXcQ'); submit();
   await wait(() => !$('#form-error').hidden, 'invalid URL error');
   check(count() === '1', 'Invalid link did not persist');
   input('#sound-url', 'https://youtu.be/dQw4w9WgXcQ'); openTrim(); input('#clip-start', '3'); input('#clip-end', '8'); submit();
@@ -216,6 +216,71 @@ try {
   if (!$<HTMLElement>('#discard-prompt').hidden) $('#confirm-discard').click();
   check(!$<HTMLDialogElement>('#add-dialog').open, 'Discard returns to collection');
   passed.push('Progressive import / visual range handles / draft protection / file replacement / precision trimming / player controls');
+
+  // Exercise real MP3 metadata, trimming, storage and playback with a provider double.
+  // No paid endpoint or credentials are used by browser tests.
+  const cloudRealm = frame.contentWindow as Window & typeof globalThis;
+  const originalFetch = cloudRealm.fetch.bind(cloudRealm);
+  const mp3 = await (await fetch('/tests/fixtures/tone.mp3')).arrayBuffer();
+  let imports = 0, cloudMode = 'success';
+  let lateResponse: ((response: Response) => void) | undefined;
+  const cloudAudio = () => new cloudRealm.Response(mp3.slice(0), { headers: { 'Content-Type': 'audio/mpeg', 'X-Tapzi-Title': encodeURIComponent('Desde YouTube') } });
+  cloudRealm.fetch = (async (resource, init) => {
+    if (String(resource) !== '/api/youtube') return originalFetch(resource, init);
+    if (init?.method !== 'POST') return cloudRealm.Response.json({ enabled: cloudMode !== 'disabled', authorized: !!cloudRealm.sessionStorage.getItem('tapzi-import-access') });
+    imports++;
+    if (cloudMode === 'late') return new Promise<Response>(resolve => { lateResponse = resolve; });
+    if (cloudMode === 'failure') return cloudRealm.Response.json({ error: 'El proveedor no pudo obtener el audio.' }, { status: 502 });
+    if (cloudMode === 'unauthorized') return cloudRealm.Response.json({ error: 'Código de acceso incorrecto.' }, { status: 401 });
+    if (cloudMode === 'html') return new cloudRealm.Response('<html>Error</html>', { headers: { 'Content-Type': 'text/html' } });
+    check(new Headers(init?.headers).get('Authorization') === 'Bearer test-access-code', 'Access code is a request header');
+    check(JSON.parse(String(init?.body)).url === 'https://youtu.be/dQw4w9WgXcQ', 'Only the link is submitted');
+    return cloudAudio();
+  }) as typeof fetch;
+  const beforeCloud = Number(count());
+  open(); $<HTMLInputElement>('input[value="youtube"]').click();
+  await wait(() => $('#youtube-status').textContent !== 'Comprobando la importación…', 'cloud configuration');
+  check(!$('#import-access').hidden, `Cloud access form: ${$('#youtube-status').textContent}; source=${$<HTMLInputElement>('input[name="source"]:checked').value}`);
+  check($('#sound-details').hidden && $('#add-actions').hidden, 'YouTube starts with a link, without premature save/name fields');
+  input('#sound-url', 'https://youtu.be/dQw4w9WgXcQ'); input('#import-access-code', 'test-access-code');
+  $('#fetch-youtube').click(); submit();
+  await wait(() => !$('#sound-details').hidden, 'downloaded MP3 opens editor');
+  check(imports === 1, 'Double submission does not consume another conversion');
+  check(Number(count()) === beforeCloud, 'Downloading alone never saves a pad');
+  check($<HTMLInputElement>('input[value="local"]').checked && $<HTMLInputElement>('#sound-name').value === 'Desde YouTube', 'Downloaded audio enters local editor with its title');
+  $('#toggle-trim').click(); input('#trim-start', '.25'); input('#trim-end', '1.25'); submit();
+  await wait(() => !$<HTMLDialogElement>('#add-dialog').open, 'save imported clip');
+  check(Number(count()) === beforeCloud + 1, 'Import saved once');
+  const cloudStorage = await cloudRealm.eval(`import('/src/storage.ts')`) as typeof import('../src/storage.ts');
+  const imported = (await cloudStorage.allSounds()).find(sound => sound.name === 'Desde YouTube');
+  check(imported?.source === 'local' && imported.blob.size > 44, 'Imported bytes are stored, not a temporary download URL');
+  $('.pad').click(); await wait(() => !$<HTMLAudioElement>('#audio-player').paused && $<HTMLAudioElement>('#audio-player').readyState >= 2, 'imported clip playback');
+  check(Math.abs($<HTMLAudioElement>('#audio-player').duration - 1) < .05, 'Real MP3 was decoded and trimmed to one second'); $('.stop-all').click();
+  for (const mode of ['failure', 'html', 'unauthorized']) {
+    cloudMode = mode; open(); $<HTMLInputElement>('input[value="youtube"]').click();
+    await wait(() => !$<HTMLButtonElement>('#fetch-youtube').disabled, `import ready: ${mode}`);
+    input('#sound-url', 'https://youtu.be/dQw4w9WgXcQ'); input('#import-access-code', 'test-access-code'); $('#fetch-youtube').click();
+    await wait(() => !$('#form-error').hidden && !$<HTMLButtonElement>('#fetch-youtube').disabled, 'import failure');
+    check(Number(count()) === beforeCloud + 1 && $('#add-actions').hidden, 'Failed import preserves collection and cannot be saved');
+    if (mode === 'unauthorized') check(!$('#import-access').hidden && !cloudRealm.sessionStorage.getItem('tapzi-import-access'), 'Rejected access code is forgotten');
+    $('#close-dialog').click(); $('#confirm-discard').click();
+  }
+  cloudMode = 'late'; open(); $<HTMLInputElement>('input[value="youtube"]').click();
+  await wait(() => !$<HTMLButtonElement>('#fetch-youtube').disabled, 'cancellable import ready');
+  input('#sound-url', 'https://youtu.be/dQw4w9WgXcQ'); input('#import-access-code', 'test-access-code'); $('#fetch-youtube').click();
+  await wait(() => !!lateResponse, 'pending import'); $('#cancel-youtube-import').click();
+  check(!$('#youtube-import-progress').checkVisibility() && !$<HTMLButtonElement>('#fetch-youtube').disabled, 'Cancellation immediately restores controls');
+  lateResponse!(cloudAudio()); await pause(); await pause();
+  check($('#sound-details').hidden && Number(count()) === beforeCloud + 1, 'Late response after cancellation cannot populate or save a draft');
+  $('#close-dialog').click(); $('#confirm-discard').click();
+  cloudMode = 'disabled'; open(); $<HTMLInputElement>('input[value="youtube"]').click();
+  await wait(() => $('#youtube-status').textContent?.includes('no está activada'), 'unconfigured deployment');
+  check($<HTMLButtonElement>('#fetch-youtube').disabled, 'Unconfigured deployment never promises a working importer');
+  $<HTMLInputElement>('#youtube-online').click(); check(!$('#add-actions').hidden, 'Saving an online link remains available');
+  $('#close-dialog').click();
+  cloudRealm.fetch = originalFetch;
+  await reload(); check(Number(count()) === beforeCloud + 1, 'Imported audio survives reload');
+  passed.push('YouTube cloud flow / real MP3 trim and persistence / access / failure / cancellation / no duplicate conversion / offline-link fallback');
 
   for (const width of [320, 360, 390, 1280]) {
     frame.style.width = `${width}px`; await pause();

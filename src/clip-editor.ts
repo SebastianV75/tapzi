@@ -151,5 +151,5 @@ export function createClipEditor(options: Options) {
     });
     number(`#local-${edge}`).addEventListener('input', () => { pause(); sync(); });
   }
-  return { reset, pause, selection, getFile: () => file, ready: () => !!file && duration > 0 };
+  return { reset, pause, selection, loadFile: choose, getFile: () => file, ready: () => !!file && duration > 0 };
 }

@@ -1,10 +1,22 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createImporter } from './server/importer.ts';
+import { createYouTubeHandler } from './server/youtube.ts';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env };
+  const handler = createYouTubeHandler(env);
+  const middleware = (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse, next: () => void) => {
+    if (req.url?.split('?')[0] === '/api/youtube') void handler(req, res); else next();
+  };
+  return {
   plugins: [
+    {
+      name: 'tapzi-youtube-cloud-import',
+      configureServer(server) { server.middlewares.use(middleware); },
+      configurePreviewServer(server) { server.middlewares.use(middleware); },
+    },
     // Optional legacy developer tool. The shipped app never calls this endpoint.
     ...(process.env.TAPZI_LOCAL_IMPORT === '1' ? [{
       name: 'tapzi-audio-import',
@@ -43,4 +55,5 @@ self.addEventListener('fetch', event => {
       },
     },
   ],
+  };
 });
