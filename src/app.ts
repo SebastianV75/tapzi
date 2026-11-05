@@ -5,6 +5,7 @@ import { createPlayer } from './player.ts';
 import { createSoundEngine } from './sound-engine.ts';
 import { prepareAudio, encodeWav } from './media.ts';
 import { makeBackup, readBackup } from './backup.ts';
+import { collectionSignature, recordExport, exportStatus, persistenceStatus } from './collection-safety.ts';
 import { setupOffline } from './offline.ts';
 import { createClipEditor } from './clip-editor.ts';
 import { createYouTubeImport } from './youtube-import.ts';
@@ -78,35 +79,77 @@ function paintPad(card: HTMLElement, pad: HTMLElement, sound: Sound): void {
   pad.querySelector('.eq')?.remove();
   if (active) { const bars = text('span', 'eq', ''); bars.setAttribute('aria-hidden', 'true'); bars.append(...[0, 1, 2, 3].map(() => document.createElement('i'))); pad.append(bars); }
 }
+const cards = new Map<string, { card: HTMLLIElement; pad: HTMLButtonElement; name: HTMLSpanElement; favorite: HTMLButtonElement; more: HTMLButtonElement; sound: Sound; busy: boolean }>();
+let syncedSounds: Sound[] | undefined;
 function render(): void {
-  engine?.sync(sounds);
+  if (syncedSounds !== sounds) { engine?.sync(sounds); syncedSounds = sounds; }
   const focus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const focusId = focus?.dataset.soundId; const action = focus?.dataset.action;
-  const board = $('#board'); board.replaceChildren();
+  const board = $('#board');
   const visible = sounds.filter(sound => (!favoritesOnly || sound.favorite) && matchesSound(sound, search.value));
   $('#total').textContent = String(sounds.length);
-  $('#empty').hidden = sounds.length !== 0;
+  $('#empty').hidden = !storageReady || sounds.length !== 0;
   $('#no-results-title').textContent = favoritesOnly && !search.value.trim() ? 'Tus favoritos van aquí' : 'No encontramos ese sonido';
   $('#no-results-description').textContent = favoritesOnly && !search.value.trim() ? 'Toca la estrella de un sonido para tenerlo siempre a mano.' : 'Prueba con otro nombre o vuelve a verlos todos.'; $('#no-results').hidden = sounds.length === 0 || visible.length !== 0;
-  board.hidden = visible.length === 0; board.setAttribute('aria-busy', 'false');
+  board.hidden = visible.length === 0; board.setAttribute('aria-busy', String(!storageReady));
   for (const [id, selected] of [['#all-filter', !favoritesOnly], ['#favorite-filter', favoritesOnly]] as const) { $(id).setAttribute('aria-pressed', String(selected)); $(id).classList.toggle('selected', selected); }
+  const live = new Set(sounds.map(sound => sound.id));
+  const shown = new Set(visible.map(sound => sound.id));
+  for (const [id, view] of cards) {
+    view.card.classList.remove('is-new');
+    if (!shown.has(id)) view.card.remove();
+    if (!live.has(id)) { cards.delete(id); seen.delete(id); }
+  }
   let arrival = 0;
+  let cursor = board.firstElementChild;
   for (const sound of visible) {
-    const card = document.createElement('li'); card.className = 'sound-card'; card.dataset.color = sound.color ?? 'lavender';
-    if (!seen.has(sound.id)) { seen.add(sound.id); card.classList.add('is-new'); card.style.setProperty('--i', String(Math.min(arrival++, 14))); }
-    const pad = document.createElement('button'); pad.className = 'pad'; pad.dataset.soundId = sound.id; pad.dataset.action = 'play';
-    pad.append(text('span', 'pad-name', sound.name));
-    paintPad(card, pad, sound);
-    const favorite = document.createElement('button'); favorite.className = `favorite-button${sound.favorite ? ' is-favorite' : ''}${sound.id === popId ? ' pop' : ''}`;
-    favorite.dataset.soundId = sound.id; favorite.dataset.action = 'favorite'; favorite.disabled = pending.has(sound.id);
-    favorite.setAttribute('aria-label', `${sound.favorite ? 'Quitar de' : 'Agregar a'} favoritos: ${sound.name}`); favorite.setAttribute('aria-pressed', String(sound.favorite)); favorite.append(icon('star'));
-    favorite.addEventListener('click', () => void toggleFavorite(sound.id));
-    const more = document.createElement('button'); more.className = 'icon-button more-button'; more.dataset.soundId = sound.id; more.dataset.action = 'edit'; more.disabled = pending.has(sound.id);
-    more.setAttribute('aria-label', `Editar ${sound.name}`); more.append(icon('more')); more.addEventListener('click', () => openEdit(sound.id));
-    card.append(pad, favorite, more); board.append(card);
+    let view = cards.get(sound.id);
+    const busy = pending.has(sound.id);
+    if (!view) {
+      const card = document.createElement('li'); card.className = 'sound-card';
+      if (!seen.has(sound.id)) { seen.add(sound.id); card.classList.add('is-new'); card.style.setProperty('--i', String(Math.min(arrival++, 14))); }
+      const pad = document.createElement('button'); pad.className = 'pad'; pad.dataset.soundId = sound.id; pad.dataset.action = 'play';
+      const name = text('span', 'pad-name', sound.name); pad.append(name);
+      const favorite = document.createElement('button'); favorite.className = 'favorite-button';
+      favorite.dataset.soundId = sound.id; favorite.dataset.action = 'favorite'; favorite.append(icon('star'));
+      favorite.addEventListener('click', () => void toggleFavorite(sound.id));
+      const more = document.createElement('button'); more.className = 'icon-button more-button'; more.dataset.soundId = sound.id; more.dataset.action = 'edit';
+      more.append(icon('more')); more.addEventListener('click', () => { if (!pending.has(sound.id)) openEdit(sound.id); });
+      card.append(pad, favorite, more);
+      view = { card, pad, name, favorite, more, sound, busy };
+      cards.set(sound.id, view);
+      paintPad(card, pad, sound);
+      // Initialize attributes below, just as for changed metadata.
+      card.dataset.color = sound.color ?? 'lavender';
+      favorite.setAttribute('aria-pressed', String(sound.favorite));
+      favorite.setAttribute('aria-label', `${sound.favorite ? 'Quitar de' : 'Agregar a'} favoritos: ${sound.name}`);
+      more.setAttribute('aria-label', `Editar ${sound.name}`);
+      favorite.classList.toggle('is-favorite', sound.favorite);
+      favorite.setAttribute('aria-disabled', String(busy)); more.setAttribute('aria-disabled', String(busy));
+    }
+    if (view.sound !== sound) {
+      if (view.sound.name !== sound.name) {
+        view.name.textContent = sound.name;
+        view.more.setAttribute('aria-label', `Editar ${sound.name}`);
+        view.pad.setAttribute('aria-label', `${sound.id !== activeId ? 'Reproducir' : sound.source === 'local' ? 'Reiniciar' : 'Detener'} ${sound.name}`);
+      }
+      if (view.sound.color !== sound.color) view.card.dataset.color = sound.color ?? 'lavender';
+      if (view.sound.favorite !== sound.favorite || view.sound.name !== sound.name) {
+        view.favorite.setAttribute('aria-label', `${sound.favorite ? 'Quitar de' : 'Agregar a'} favoritos: ${sound.name}`);
+        view.favorite.setAttribute('aria-pressed', String(sound.favorite));
+        view.favorite.classList.toggle('is-favorite', sound.favorite);
+      }
+      view.sound = sound;
+    }
+    if (view.busy !== busy) { view.favorite.setAttribute('aria-disabled', String(busy)); view.more.setAttribute('aria-disabled', String(busy)); view.busy = busy; }
+    view.favorite.classList.toggle('pop', sound.id === popId);
+    if (view.card.classList.contains('is-playing') !== (sound.id === activeId)) paintPad(view.card, view.pad, sound);
+    // Keep nodes in place whenever possible, preserving focus, ripples and playback progress.
+    if (view.card !== cursor) board.insertBefore(view.card, cursor);
+    cursor = view.card.nextElementSibling;
   }
   popId = null;
-  if (focusId) [...board.querySelectorAll('button')].find(button => button.dataset.soundId === focusId && button.dataset.action === action)?.focus({ preventScroll: true });
+  if (focusId && document.activeElement !== focus) [...board.querySelectorAll('button')].find(button => button.dataset.soundId === focusId && button.dataset.action === action)?.focus({ preventScroll: true });
 }
 const padFor = (id: string): HTMLElement | null => document.querySelector<HTMLElement>(`.pad[data-sound-id="${CSS.escape(id)}"]`);
 const player = createPlayer(id => {
@@ -295,30 +338,60 @@ document.querySelectorAll<HTMLButtonElement>('[data-close]').forEach(button => b
 function download(file: File): void {
   const url = URL.createObjectURL(file); const anchor = document.createElement('a'); anchor.href = url; anchor.download = file.name; document.body.append(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
-async function shareOrDownload(file: File): Promise<void> {
+async function shareOrDownload(file: File): Promise<'shared' | 'downloaded' | 'cancelled'> {
   if (navigator.canShare?.({ files: [file] })) {
-    try { await navigator.share({ files: [file] }); } catch (error) { if (!(error instanceof DOMException && error.name === 'AbortError')) throw error; }
-  } else download(file);
+    try { await navigator.share({ files: [file] }); return 'shared'; } catch (error) { if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled'; throw error; }
+  }
+  download(file); return 'downloaded';
 }
 $('#export-sound').addEventListener('click', () => {
   const sound = sounds.find(item => item.id === editing); if (sound?.source !== 'local') return;
   const ext = sound.fileName.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') || 'mp3';
   void shareOrDownload(new File([sound.blob], `${sound.name.replace(/[^\p{L}\p{N} _-]/gu, '') || 'tapzi'}.${ext}`, { type: sound.blob.type })).catch(error => errorAt('#edit-error', error));
 });
-$('#settings-trigger').addEventListener('click', () => {
+let exporting = false;
+let protectionCheck = 0;
+function refreshSettings(): void {
   const bytes = sounds.reduce((sum, s) => sum + (s.source === 'local' ? s.blob.size : 0), 0);
   $('#storage-info').textContent = `${sounds.length} sonidos · ${(bytes / 1024 / 1024).toFixed(1)} MB de audio`;
-  $('#settings-message').textContent = ''; $<HTMLButtonElement>('#backup-export').disabled = !storageReady || !sounds.length; $<HTMLButtonElement>('#backup-import').disabled = !storageReady; settings.showModal();
+  $('#backup-status').textContent = exportStatus(sounds);
+  $<HTMLButtonElement>('#backup-export').disabled = !storageReady || !sounds.length || exporting || restoring;
+  $<HTMLButtonElement>('#backup-import').disabled = !storageReady || exporting || restoring;
+}
+async function showProtection(request = false): Promise<void> {
+  const token = ++protectionCheck;
+  const button = $<HTMLButtonElement>('#protect-storage'); button.disabled = true;
+  const result = await persistenceStatus(request);
+  if (token !== protectionCheck) return;
+  $('#persistence-status').textContent = result.text;
+  button.hidden = !result.canRequest; button.disabled = false;
+}
+$('#protect-storage').addEventListener('click', () => void showProtection(true));
+$('#settings-trigger').addEventListener('click', () => {
+  refreshSettings(); void showProtection();
+  $('#settings-message').textContent = ''; settings.showModal();
 });
-$('#backup-export').addEventListener('click', () => {
-  try { const file = new File([makeBackup(sounds)], `tapzi-${new Date().toISOString().slice(0, 10)}.tapzi`, { type: 'application/octet-stream' }); void shareOrDownload(file).catch(error => { $('#settings-message').textContent = message(error); }); }
-  catch (error) { $('#settings-message').textContent = message(error); }
+$('#backup-export').addEventListener('click', async () => {
+  if (exporting || restoring || !storageReady || !sounds.length) return;
+  exporting = true; refreshSettings();
+  try {
+    // Snapshot before opening the native sheet. Cancelled sharing is not a completed export.
+    const signature = collectionSignature(sounds);
+    const file = new File([makeBackup(sounds)], `tapzi-${new Date().toISOString().slice(0, 10)}.tapzi`, { type: 'application/octet-stream' });
+    const result = await shareOrDownload(file);
+    if (result === 'cancelled') { $('#settings-message').textContent = 'Exportación cancelada. Tu colección sigue aquí.'; return; }
+    recordExport(signature);
+    $('#settings-message').textContent = result === 'shared'
+      ? 'Archivo entregado a la hoja de compartir. Comprueba que lo guardaste en Archivos.'
+      : 'Descarga iniciada. Comprueba que el archivo .tapzi esté en tus descargas.';
+  } catch (error) { $('#settings-message').textContent = message(error); }
+  finally { exporting = false; refreshSettings(); }
 });
 $('#backup-import').addEventListener('click', () => input('#backup-file').click());
 let restoring = false;
 settings.addEventListener('cancel', event => { if (restoring) event.preventDefault(); });
 input('#backup-file').addEventListener('change', async () => {
-  const file = input('#backup-file').files?.[0]; if (!file || restoring) return;
+  const file = input('#backup-file').files?.[0]; if (!file || restoring || exporting) return;
   restoring = true; setBusy(settings, true); $('#settings-message').textContent = 'Revisando la copia…';
   try {
     const restored = await readBackup(file); const before = sounds.length; await restoreSounds(restored); sounds = await allSounds(); render();
@@ -326,14 +399,14 @@ input('#backup-file').addEventListener('change', async () => {
     $('#settings-message').textContent = `${sounds.length - before} sonidos agregados. Tu colección anterior se conservó.`;
     $('#storage-info').textContent = `${sounds.length} sonidos en este dispositivo`;
   } catch (error) { $('#settings-message').textContent = message(error); }
-  finally { restoring = false; setBusy(settings, false); input('#backup-file').value = ''; }
+  finally { restoring = false; setBusy(settings, false); input('#backup-file').value = ''; refreshSettings(); void showProtection(); }
 });
 $('#all-filter').addEventListener('click', () => { favoritesOnly = false; render(); });
 $('#favorite-filter').addEventListener('click', () => { favoritesOnly = true; render(); });
 search.addEventListener('input', render);
 $('#clear-filter').addEventListener('click', () => { favoritesOnly = false; search.value = ''; render(); search.focus(); });
 $('#demo-trigger').addEventListener('click', async () => {
-  const button = $<HTMLButtonElement>('#demo-trigger'); button.disabled = true;
+  const button = $<HTMLButtonElement>('#demo-trigger'); button.disabled = true; demoBusy = true;
   try {
     const demos = [['Redoble digital', 180, 'lavender'], ['Momento de suspenso', 330, 'peach'], ['Pequeña victoria', 660, 'mint']] as const;
     const newSounds = demos.map(([name, hz, color], index) => {
@@ -344,12 +417,43 @@ $('#demo-trigger').addEventListener('click', async () => {
     });
     await restoreSounds(newSounds); sounds = await allSounds(); render(); toast('Tres sonidos originales para probar. Puedes editarlos o borrarlos.');
   } catch (error) { errorAt('#app-error', error); }
-  finally { button.disabled = false; }
+  finally { button.disabled = false; demoBusy = false; }
 });
-// Refresh after another tab changes the collection, without discarding an open form.
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && storageReady && !document.querySelector('dialog[open]')) void allSounds().then(items => { sounds = items; render(); }).catch(error => errorAt('#app-error', error)); });
-try {
-  sounds = await allSounds(); storageReady = true; render();
-  document.querySelectorAll<HTMLButtonElement>('.add-trigger').forEach(button => { button.disabled = false; });
-} catch (error) { errorAt('#app-error', error); $('#board').setAttribute('aria-busy', 'false'); }
+// A return-to-app read must not overwrite an edit that completed while it was pending.
+let refreshing = 0;
+let demoBusy = false;
+const collectionBusy = (): boolean => saving || editBusy || restoring || demoBusy || pending.size > 0;
+async function refreshCollection(): Promise<void> {
+  // Always load the initial collection, even if an update reloads a background tab.
+  if ((storageReady && document.visibilityState === 'hidden') || collectionBusy() || document.querySelector('dialog[open]')) return;
+  const token = ++refreshing, before = sounds;
+  const current = (): boolean => token === refreshing && before === sounds && !collectionBusy() && !document.querySelector('dialog[open]');
+  const status = $('#collection-loading');
+  status.textContent = storageReady ? 'Actualizando tus sonidos…' : 'Cargando tus sonidos…'; status.hidden = false;
+  $('#retry-storage').hidden = true;
+  try {
+    let items: Sound[];
+    try { items = await allSounds(); }
+    catch {
+      if (!current()) return;
+      status.textContent = 'Reconectando con tus sonidos…';
+      await new Promise(resolve => setTimeout(resolve, 250));
+      if (!current()) return;
+      items = await allSounds(); // One bounded read retry. Never replay a write.
+    }
+    if (token !== refreshing || before !== sounds || collectionBusy() || document.querySelector('dialog[open]')) return;
+    sounds = items; storageReady = true;
+    if (activeId && !items.some(item => item.id === activeId)) player.stop();
+    render(); errorAt('#app-error', null); $('#retry-storage').hidden = true;
+    document.querySelectorAll<HTMLButtonElement>('.add-trigger').forEach(button => { button.disabled = false; });
+  } catch (error) {
+    if (token !== refreshing || before !== sounds || collectionBusy()) return;
+    errorAt('#app-error', error); $('#retry-storage').hidden = false; $('#board').setAttribute('aria-busy', 'false');
+  } finally { if (token === refreshing) status.hidden = true; }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void refreshCollection(); });
+window.addEventListener('pageshow', () => void refreshCollection());
+for (const modal of document.querySelectorAll('dialog')) modal.addEventListener('close', () => void refreshCollection());
+$('#retry-storage').addEventListener('click', () => void refreshCollection());
+await refreshCollection();
 setupOffline(() => !document.querySelector('dialog[open]') && !activeId);

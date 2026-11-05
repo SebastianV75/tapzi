@@ -1,43 +1,78 @@
 import type { Sound } from './sounds.ts';
 
 let opening: Promise<IDBDatabase> | undefined;
+let connection: IDBDatabase | undefined;
 function database(): Promise<IDBDatabase> {
+  if (connection) return Promise.resolve(connection);
   if (!opening) opening = new Promise((resolve, reject) => {
     const request = indexedDB.open('tapzi', 1);
+    let abandoned = false;
+    const timer = setTimeout(() => fail('El almacenamiento tarda en responder. Intenta cargar la colección otra vez.'), 4000);
+    const fail = (message: string): void => {
+      if (abandoned) return;
+      clearTimeout(timer); abandoned = true; opening = undefined; reject(new Error(message));
+    };
     request.onupgradeneeded = () => request.result.createObjectStore('sounds', { keyPath: 'id' });
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => { opening = undefined; reject(new Error('El almacenamiento no está disponible. Revisá los permisos o abrí Tapzi fuera del modo privado.')); };
-    request.onblocked = () => reject(new Error('Cerrá las otras pestañas de Tapzi e intentá otra vez.'));
+    request.onsuccess = () => {
+      clearTimeout(timer);
+      const db = request.result;
+      if (abandoned) { db.close(); return; }
+      connection = db; opening = undefined;
+      const forget = (): void => { if (connection === db) connection = undefined; };
+      db.onclose = forget;
+      db.onversionchange = () => { forget(); db.close(); };
+      resolve(db);
+    };
+    request.onerror = () => fail('El almacenamiento no está disponible. Revisá los permisos o abrí Tapzi fuera del modo privado.');
+    request.onblocked = () => fail('Cerrá las otras pestañas de Tapzi e intentá otra vez.');
   });
-  return opening;
+  const attempt = opening;
+  // indexedDB.open can throw synchronously (for example when access is denied).
+  void attempt.catch(() => { if (opening === attempt) opening = undefined; });
+  return attempt;
+}
+
+// Retry only opening a transaction: never replay a write whose outcome is unknown.
+async function transaction(mode: IDBTransactionMode): Promise<IDBTransaction> {
+  const db = await database();
+  try { return db.transaction('sounds', mode); }
+  catch (error) {
+    if (!(error instanceof DOMException) || error.name !== 'InvalidStateError') throw error;
+    if (connection === db) connection = undefined;
+    db.close();
+    return (await database()).transaction('sounds', mode);
+  }
 }
 
 export async function allSounds(): Promise<Sound[]> {
-  const db = await database();
+  const tx = await transaction('readonly');
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction('sounds', 'readonly');
-    const request: IDBRequest<Sound[]> = transaction.objectStore('sounds').getAll();
-    transaction.oncomplete = () => resolve(request.result.sort((a, b) => b.createdAt - a.createdAt));
-    transaction.onerror = () => reject(new Error('No se pudo leer tu colección. Volvé a cargar Tapzi.'));
-    transaction.onabort = transaction.onerror;
+    const request: IDBRequest<Sound[]> = tx.objectStore('sounds').getAll();
+    const fail = (): void => {
+      clearTimeout(timer);
+      if (connection === tx.db) connection = undefined;
+      tx.db.close();
+      reject(new Error('No se pudo leer tu colección. Tus sonidos no se han modificado. Intenta cargarla otra vez.'));
+    };
+    const timer = setTimeout(() => { try { tx.abort(); } catch { /* It may have just finished. */ } fail(); }, 4000);
+    tx.oncomplete = () => { clearTimeout(timer); resolve(request.result.sort((a, b) => b.createdAt - a.createdAt)); };
+    tx.onerror = tx.onabort = fail;
   });
 }
 
 export async function saveSound(sound: Sound): Promise<Sound> {
-  const db = await database();
+  const tx = await transaction('readwrite');
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction('sounds', 'readwrite');
-    transaction.objectStore('sounds').put(sound);
-    transaction.oncomplete = () => resolve(sound);
-    transaction.onerror = () => reject(new Error('No se pudo guardar. Puede faltar espacio en tu dispositivo. No se agregó el sonido.'));
-    transaction.onabort = transaction.onerror;
+    tx.objectStore('sounds').put(sound);
+    tx.oncomplete = () => resolve(sound);
+    tx.onerror = () => reject(new Error('No se pudo guardar. Puede faltar espacio en tu dispositivo. No se agregó el sonido.'));
+    tx.onabort = tx.onerror;
   });
 }
 
 export async function removeSound(id: string): Promise<void> {
-  const db = await database();
+  const tx = await transaction('readwrite');
   return new Promise((resolve, reject) => {
-    const tx = db.transaction('sounds', 'readwrite');
     tx.objectStore('sounds').delete(id);
     tx.oncomplete = () => resolve();
     tx.onerror = tx.onabort = () => reject(new Error('No se pudo eliminar el sonido. Intentá otra vez.'));
@@ -46,9 +81,8 @@ export async function removeSound(id: string): Promise<void> {
 
 // One transaction: either all new entries are saved or none. Existing IDs win.
 export async function restoreSounds(sounds: Sound[]): Promise<void> {
-  const db = await database();
+  const tx = await transaction('readwrite');
   return new Promise((resolve, reject) => {
-    const tx = db.transaction('sounds', 'readwrite');
     const store = tx.objectStore('sounds');
     for (const sound of sounds) {
       const request = store.getKey(sound.id);

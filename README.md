@@ -6,9 +6,9 @@ Tu botonera personal de bolsillo, en TypeScript. Diseñada para instalar en el i
 
 1. Toca **Agregar sonido → Seleccionar archivo** y elige un audio o video. También puedes arrastrarlo al selector desde una computadora.
 2. El nombre se sugiere automáticamente. Escúchalo y guarda directamente, o abre **Recortar** para arrastrar inicio/final. Los segundos exactos y el color son opcionales.
-3. Guarda y toca la tarjeta para reproducir. El reproductor inferior permite pausar, continuar, repetir y moverse por el audio. Otro toque en la tarjeta lo detiene.
+3. Guarda y toca la tarjeta para reproducir. El reproductor inferior permite pausar, continuar, repetir y moverse por el audio. Otro toque en la tarjeta reinicia el sonido local; para detenerlo, usa el control de detener.
 4. La estrella lo agrega a favoritos; **···** permite editar, compartir o eliminar con deshacer. Cerrar un sonido sin guardar pregunta antes de descartar.
-5. En **ajustes**, guardá una copia `.tapzi`. Incluye audios, nombres, colores y favoritos. Restaurar agrega lo que falta sin reemplazar los sonidos existentes.
+5. En **ajustes**, revisa la última exportación y si hay cambios pendientes. Guardá una copia `.tapzi`. Incluye audios, nombres, colores y favoritos. Restaurar agrega lo que falta sin reemplazar los sonidos existentes.
 
 La botonera comienza vacía. **Probar con tres sonidos** crea tres tonos originales localmente; no descarga contenido de terceros.
 
@@ -63,7 +63,7 @@ No se ha publicado una nueva URL ni contratado servicios como parte de esta entr
 4. Importá tus sonidos allí. Para mover una colección que ya estaba en Safari, exportá y restaurá una copia desde ajustes.
 5. Probá modo avión: cerrá Tapzi, volvé a abrirla y reproducí un sonido local.
 
-El almacenamiento pertenece al navegador/app instalada y al origen. iOS puede eliminar datos bajo presión de espacio; borrar datos del sitio también borra la colección. La app solicita persistencia cuando el navegador lo permite, pero **una copia en Archivos es el respaldo durable**. No hay sincronización automática.
+El almacenamiento pertenece al navegador/app instalada y al origen. iOS puede eliminar datos bajo presión de espacio; borrar datos del sitio también borra la colección. La app solicita persistencia cuando el navegador lo permite, pero **una copia en Archivos es el respaldo durable**. No hay sincronización automática. En ajustes → Acerca del almacenamiento puedes consultar y solicitar protección persistente. Tapzi distingue protección concedida, denegada y no disponible; no promete almacenamiento permanente. La fecha de exportación registra la entrega a compartir o el inicio de descarga, no confirma que el archivo se haya guardado: compruébalo en Archivos. Cancelar la hoja de compartir no registra una exportación.
 
 ## Archivos y límites
 
@@ -72,10 +72,13 @@ El almacenamiento pertenece al navegador/app instalada y al origen. iOS puede el
 - Soporte de formatos según el navegador: MP3, WAV, M4A y MP4 con AAC son los candidatos principales. Un contenedor de video no garantiza que su códec esté soportado. Un fallo muestra un mensaje y no guarda un registro incompleto.
 - Backups: hasta 200 MB y 1000 sonidos. Formato binario versionado, sin base64 ni descompresión. Se valida antes de una única transacción de restauración.
 - El service worker solo guarda los archivos de la interfaz. Los audios viven en IndexedDB; no se cachean YouTube ni APIs.
-- Reproducción rápida: los sonidos de hasta 2 minutos se decodifican en segundo plano y se mantienen en memoria (hasta 64 MB), así que suenan al instante. Uno que aún no está listo suena por el `<audio>` normal y queda listo para el siguiente toque. Si en algún dispositivo no suena, abre Tapzi con `?audio=compat` para usar siempre el `<audio>`.
+- Reproducción rápida: los sonidos de hasta 2 minutos se decodifican en segundo plano y se mantienen en memoria (hasta 128 MB), así que suenan al instante. La precarga prioriza los usados recientemente durante la sesión y los favoritos, seguida de los clips cortos. Uno que aún no está listo inicia por el `<audio>` normal durante el toque, sin esperar la decodificación; cuando queda preparado, otro toque lo reinicia desde memoria. Si en algún dispositivo no suena, abre Tapzi con `?audio=compat` para usar siempre el `<audio>`.
+- Buscar y marcar favoritos reutiliza las tarjetas existentes y conserva el foco y el progreso de reproducción.
+- Si se cierra la conexión al almacenamiento, Tapzi puede reabrirla sin recargar la página. Al iniciar muestra «Cargando tus sonidos…» hasta completar la lectura, incluso tras actualizar en segundo plano. Las aperturas o lecturas que no responden tienen un límite de espera y la biblioteca reintenta una vez automáticamente; si falla, ofrece volver a cargar sin descartar los sonidos visibles. Solo se reintenta abrir la transacción, nunca una escritura ya iniciada.
+- Al volver a la app se revisa el audio activo sin reanudar un sonido pausado. Si el navegador exige otro gesto para recuperar audio, Continuar conserva la selección y la posición. Las lecturas al volver no sobrescriben cambios que acaban de guardarse.
 - Las actualizaciones se anuncian y se aplican cuando no hay reproducción ni editores abiertos. No borran la colección.
 
-**Pendiente de aceptación física:** Safari/iPhone, audio audible, hoja de compartir/Archivos, instalación y formatos de los videos reales del usuario. Las pruebas de Chromium no sustituyen esa comprobación.
+**Pendiente de aceptación física:** Safari/iPhone, audio audible, hoja de compartir/Archivos, instalación y formatos de los videos reales del usuario. Las pruebas de Chromium no sustituyen esa comprobación. Sigue la [prueba de aceptación en iPhone](docs/iphone-check.md).
 
 ## Estructura
 
@@ -85,7 +88,8 @@ El almacenamiento pertenece al navegador/app instalada y al origen. iOS puede el
 - `api/youtube.ts`, `server/youtube.ts`, `server/cloud-audio.ts`: función Vercel, acceso privado y adaptador TUBE MP3 con descarga acotada.
 - `src/media.ts`: límites, extracción/recorte con Web Audio y codificador WAV.
 - `src/mp3-slice.ts`: localiza los bloques de un MP3 para decodificar solo el fragmento elegido.
-- `src/storage.ts`: IndexedDB y restauración atómica.
+- `src/storage.ts`: IndexedDB, recuperación de conexiones y restauración atómica.
+- `src/collection-safety.ts`: estado real de persistencia y registro local de exportaciones (sin guardar audios en localStorage).
 - `src/backup.ts`: formato `.tapzi`, validación y empaquetado.
 - `src/player.ts`: reproducción local y reproductor online opcional.
 - `src/sound-engine.ts`: decodificación en segundo plano y reproducción inmediata desde memoria (Web Audio).

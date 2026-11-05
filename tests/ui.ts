@@ -116,6 +116,26 @@ try {
   check(count() === '1', 'Local clip saved');
   await reload();
   check(count() === '1' && $('.pad-name').textContent === 'Épico final', 'Clip persists across reload');
+  // The cached IndexedDB connection may close while the app remains open.
+  const storageRealm = frame.contentWindow as Window & typeof globalThis;
+  const storageModule = await storageRealm.eval(`import('/src/storage.ts')`) as typeof import('../src/storage.ts');
+  const nativeTransaction = storageRealm.IDBDatabase.prototype.transaction;
+  let capturedDB: IDBDatabase | undefined;
+  storageRealm.IDBDatabase.prototype.transaction = function (...args: Parameters<IDBDatabase['transaction']>) {
+    capturedDB = this; return nativeTransaction.apply(this, args);
+  };
+  const beforeClose = await storageModule.allSounds();
+  storageRealm.IDBDatabase.prototype.transaction = nativeTransaction;
+  capturedDB!.close();
+  await storageModule.saveSound(beforeClose[0]);
+  const afterClose = await storageModule.allSounds();
+  check(afterClose.length === beforeClose.length, 'Saving after a closed connection reopens storage without duplication');
+  const oldClip = beforeClose[0], newClip = afterClose[0];
+  check(oldClip.source === 'local' && newClip.source === 'local', 'Recovered local records');
+  const oldBytes = new Uint8Array(await oldClip.blob.arrayBuffer()), newBytes = new Uint8Array(await newClip.blob.arrayBuffer());
+  check(oldBytes.length === newBytes.length && oldBytes.every((byte, i) => byte === newBytes[i]), 'Reopening storage preserves exact audio bytes');
+  passed.push('Closed database recovery / no duplicate write / exact audio preservation');
+
   $('.pad').click();
   $('#play-pause').click(); $('#play-pause').click(); $('#play-pause').click();
   await pause();
@@ -131,7 +151,7 @@ try {
   $('#replay-sound').click(); await wait(() => isPlaying() && Number(slider().value) < .5, 'Replay starts from the beginning');
   $('.stop-all').click();
   check($('#mobile-transport').hidden && $<HTMLAudioElement>('#audio-player').paused && !usesMediaElement(), 'Stop releases audio');
-  // A sound that is not decoded yet decodes for the waiting tap. Compatibility mode keeps every tap on the media element.
+  // Cold sounds start on the media element immediately; prepared sounds use memory.
   const tapOnce = async (): Promise<boolean> => { $('.pad').click(); await wait(isPlaying, 'tap starts playback'); const element = usesMediaElement(); $('.stop-all').click(); return element; };
   async function openApp(search: string): Promise<void> {
     await new Promise<void>(resolve => { frame.onload = () => resolve(); frame.contentWindow!.location.search = search; });
@@ -145,6 +165,10 @@ try {
   check(decoded, 'A tap plays the sound from memory without loading a media element');
   $('.pad').click(); $('#play-pause').click(); await pause();
   check($('#player-state').textContent === 'En pausa', 'Paused decoded sound is reflected in the transport');
+  const pausedRealm = frame.contentWindow as Window & typeof globalThis;
+  pausedRealm.dispatchEvent(new pausedRealm.PageTransitionEvent('pageshow', { persisted: true }));
+  await pause();
+  check($('#play-pause').getAttribute('aria-label') === 'Continuar reproducción', 'Returning to the app does not autoplay a paused sound');
   $('#play-pause').click(); await wait(isPlaying, 'resume decoded sound'); $('.stop-all').click();
   passed.push('Decoded playback from memory / media-element fallback / compatibility mode / transport');
 
@@ -188,7 +212,13 @@ try {
   seekStuck.AudioContext.prototype.resume = () => new Promise<void>(() => undefined);
   $('.pad').click(); $('#play-pause').click();
   await wait(() => !slider().disabled, 'paused decoded sound');
+  const mediaPlay = seekStuck.HTMLMediaElement.prototype.play;
+  seekStuck.HTMLMediaElement.prototype.play = function () { return Promise.reject(new seekStuck.DOMException('Gesture required', 'NotAllowedError')); };
   input('#playback-seek', '1'); $('#play-pause').click();
+  await wait(() => $('#playback-message').textContent?.includes('Continuar'), 'blocked recovery asks for a gesture');
+  check(!$('#mobile-transport').hidden && $<HTMLAudioElement>('#audio-player').currentTime >= 1, 'Blocked recovery preserves the selected sound and position');
+  seekStuck.HTMLMediaElement.prototype.play = mediaPlay;
+  $('#play-pause').click();
   await wait(() => usesMediaElement() && isPlaying(), 'stalled resume falls back');
   check($<HTMLAudioElement>('#audio-player').currentTime >= 1, 'The fallback keeps the playback position');
   $('.stop-all').click();
@@ -219,8 +249,8 @@ try {
   await new Promise(resolve => setTimeout(resolve, 800));
   check(closes === 0 && !usesMediaElement() && isPlaying(), 'A resumable context keeps its sound through a gesture');
   interrupted = true; hang = true;
-  doc().dispatchEvent(new calls.PointerEvent('pointerdown', { bubbles: true }));
-  await wait(() => closes === 1 && usesMediaElement(), 'A sound on a context that never resumes moves to the media element');
+  calls.dispatchEvent(new calls.PageTransitionEvent('pageshow', { persisted: true }));
+  await wait(() => closes === 1 && usesMediaElement(), 'Returning from the background recovers a stalled sound without another tap');
   $('.stop-all').click();
   await reload();
   // Decoding that cannot finish or succeed. The sound is added after the patch so it cannot already be in memory.
@@ -239,6 +269,11 @@ try {
   $('.pad').click();
   check(usesMediaElement(), 'A long sound starts on the media element within the gesture, without waiting to decode');
   $('.stop-all').click(); await long.remove(long.id); await reload();
+  const cold = await addUndecoded(() => new Promise<AudioBuffer>(() => undefined), 5);
+  $('.pad').click();
+  check(usesMediaElement(), 'Even a short sound starts synchronously when decoding hangs');
+  await wait(isPlaying, 'cold short audio plays without decoding');
+  $('.stop-all').click(); await cold.remove(cold.id); await reload();
   const held = await addUndecoded(() => Promise.reject(new Error('Unreadable')), 5);
   $('.pad').click(); $('#play-pause').click();
   await wait(usesMediaElement, 'failed decode falls back');
@@ -251,7 +286,9 @@ try {
   // Motion carries information: newcomers arrive once, the playing sound fills as it progresses, and every press answers.
   await reload();
   check(doc().querySelectorAll('.sound-card.is-new').length === doc().querySelectorAll('.sound-card').length, 'Sounds animate in on first load');
+  const stablePad = $('.pad');
   input('#search', 'a'); input('#search', '');
+  check($('.pad') === stablePad, 'Search preserves pad identity');
   check(doc().querySelectorAll('.sound-card.is-new').length === 0, 'Searching does not replay the entrance');
   check(getComputedStyle($('.toolbar')).position === 'sticky', 'Search and filters stay reachable while scrolling');
   const playingCard = (): HTMLElement | null => doc().querySelector<HTMLElement>('.sound-card.is-playing');
@@ -261,10 +298,18 @@ try {
   check(!!playingCard()?.querySelector('.eq') && playingCard()!.style.getPropertyValue('--p') !== '', 'The playing sound shows an equalizer and a progress fill');
   await wait(() => Number(playingCard()?.style.getPropertyValue('--p')) > .05, 'Progress fill advances with playback');
   $('#play-pause').click(); await wait(() => !!doc().querySelector('.sound-card.is-playing.is-paused'), 'Pausing freezes the equalizer');
+  const pausedCard = playingCard()!, fill = pausedCard.style.getPropertyValue('--p');
+  input('#search', 'epico');
+  check(playingCard() === pausedCard && pausedCard.style.getPropertyValue('--p') === fill && pausedCard.classList.contains('is-paused'), 'Filtering preserves paused progress and card identity');
+  input('#search', '');
+
   $('#play-pause').click(); await wait(() => !!playingCard() && !playingCard()!.classList.contains('is-paused'), 'Resuming restarts it');
   $('.stop-all').click();
   await wait(() => doc().querySelectorAll('.pad .ripple').length === 0, 'The ripple cleans itself up');
+  const stableStar = $('.favorite-button'); stableStar.focus();
   $('.favorite-button').click(); await wait(() => $('.favorite-button').getAttribute('aria-pressed') === 'true', 'star on');
+  check($('.pad') === stablePad && $('.favorite-button') === stableStar, 'Favorite changes preserve card controls');
+  check(doc().activeElement === stableStar, 'Favorite changes preserve keyboard focus');
   check(!!doc().querySelector('.favorite-button.pop'), 'A new favourite pops');
   $('.favorite-button').click(); await wait(() => $('.favorite-button').getAttribute('aria-pressed') === 'false', 'star off');
   check(!doc().querySelector('.favorite-button.pop'), 'Removing a favourite does not pop');
@@ -272,6 +317,7 @@ try {
   $('.favorite-button').click(); await wait(() => $('.favorite-button').getAttribute('aria-pressed') === 'true', 'favorite commit');
   input('#search', 'epico'); check(doc().querySelectorAll('.pad').length === 1, 'Accent-insensitive search');
   input('#search', 'absent'); check(!$('#no-results').hidden, 'No results'); $('#clear-filter').click();
+  check($('.pad') === stablePad, 'A filtered-out pad is reused when shown again');
   passed.push('Local import / actual audio trim / preview / persistence / playback / favorites / search');
 
   $('.more-button').click(); input('#edit-name', '<b>Mi sonido</b>');
@@ -285,6 +331,55 @@ try {
   $('#undo-delete').click(); await wait(() => count() === '1', 'undo commit');
   await reload(); check(count() === '1' && $('.sound-card').dataset.color === 'mint', 'Undo and edit persist');
   passed.push('Rename / color / safe text / delete / undo');
+  // A failed write leaves both the committed record and the visible name unchanged.
+  const failureRealm = frame.contentWindow as Window & typeof globalThis;
+  const failureStorage = await failureRealm.eval(`import('/src/storage.ts')`) as typeof import('../src/storage.ts');
+  const committed = await failureStorage.allSounds();
+  const put = failureRealm.IDBObjectStore.prototype.put;
+  failureRealm.IDBObjectStore.prototype.put = function (...args: Parameters<IDBObjectStore['put']>) {
+    const result = put.apply(this, args); this.transaction.abort(); return result;
+  };
+  $('.more-button').click(); input('#edit-name', 'Must not commit'); $<HTMLFormElement>('#edit-form').requestSubmit();
+  await wait(() => !$('#edit-error').hidden, 'aborted save');
+  check($('.pad-name').textContent === committed[0].name && (await failureStorage.allSounds())[0].name === committed[0].name, 'Aborted storage write leaves the previous record intact');
+  failureRealm.IDBObjectStore.prototype.put = put;
+  $('[data-close="edit-dialog"]').click();
+
+  // Hold one return-to-app read until a newer favorite write has committed.
+  const complete = Object.getOwnPropertyDescriptor(failureRealm.IDBTransaction.prototype, 'oncomplete')!;
+  let finishRead: (() => void) | undefined, intercept = true;
+  Object.defineProperty(failureRealm.IDBTransaction.prototype, 'oncomplete', { ...complete,
+    set(this: IDBTransaction, callback: (event: Event) => void) {
+      if (intercept && this.mode === 'readonly') {
+        intercept = false;
+        complete.set!.call(this, (event: Event) => { finishRead = () => callback.call(this, event); });
+      } else complete.set!.call(this, callback);
+    },
+  });
+  failureRealm.dispatchEvent(new failureRealm.PageTransitionEvent('pageshow', { persisted: true }));
+  await wait(() => !!finishRead, 'delayed collection read');
+  const oldFavorite = $('.favorite-button').getAttribute('aria-pressed');
+  $('.favorite-button').click();
+  await wait(() => $('.favorite-button').getAttribute('aria-pressed') !== oldFavorite, 'newer favorite commit');
+  finishRead!(); await pause();
+  check($('.favorite-button').getAttribute('aria-pressed') !== oldFavorite, 'A stale return-to-app read cannot overwrite a committed edit');
+  Object.defineProperty(failureRealm.IDBTransaction.prototype, 'oncomplete', complete);
+  passed.push('Aborted write preserves collection / stale foreground read cannot undo edits');
+  const getAll = failureRealm.IDBObjectStore.prototype.getAll;
+  let abortRead = true, reads = 0;
+  failureRealm.IDBObjectStore.prototype.getAll = function (...args: Parameters<IDBObjectStore['getAll']>) {
+    reads++; const result = getAll.apply(this, args);
+    if (abortRead) { abortRead = false; this.transaction.abort(); }
+    return result;
+  };
+  const retainedPad = $('.pad');
+  failureRealm.dispatchEvent(new failureRealm.PageTransitionEvent('pageshow', { persisted: true }));
+  check($('.pad') === retainedPad && !$('#collection-loading').hidden, 'Refreshing retains existing cards while reading');
+  await wait(() => reads >= 2 && $('#collection-loading').hidden, 'automatic retry after aborted read');
+  check($('#app-error').hidden && $('.pad') === retainedPad, 'A transient read failure recovers without clearing the library');
+  failureRealm.IDBObjectStore.prototype.getAll = getAll;
+  passed.push('Transient read failure automatically reconnects without clearing cards');
+
 
   open(); $<HTMLInputElement>('input[value="youtube"]').click(); $<HTMLInputElement>('#youtube-online').click(); input('#sound-name', 'Online'); input('#sound-url', 'https://youtube.com.evil.test/watch?v=dQw4w9WgXcQ'); submit();
   await wait(() => !$('#form-error').hidden, 'invalid URL error');
@@ -303,6 +398,43 @@ try {
   // Exercise real backup encode/decode and the actual file-input restore transaction.
   const modules = await (currentRealm.eval(`Promise.all([import('/src/backup.ts'), import('/src/storage.ts')])`) as Promise<[typeof import('../src/backup.ts'), typeof import('../src/storage.ts')]>);
   const original = await modules[1].allSounds(); const backup = modules[0].makeBackup(original);
+  // A cancelled native sheet must not be recorded as a saved copy.
+  currentRealm.localStorage.removeItem('tapzi:last-export');
+  Object.defineProperty(currentRealm.navigator, 'canShare', { configurable: true, value: () => true });
+  Object.defineProperty(currentRealm.navigator, 'share', { configurable: true, value: () => Promise.reject(new currentRealm.DOMException('Cancelled', 'AbortError')) });
+  $('#backup-export').click();
+  await wait(() => $('#settings-message').textContent?.includes('cancelada'), 'cancelled share');
+  check(!currentRealm.localStorage.getItem('tapzi:last-export'), 'Cancelled sharing creates no export receipt');
+  let sharedCopy: File | undefined;
+  Object.defineProperty(currentRealm.navigator, 'share', { configurable: true, value: async (data: ShareData) => { sharedCopy = data.files?.[0]; } });
+  $('#backup-export').click();
+  await wait(() => !!currentRealm.localStorage.getItem('tapzi:last-export'), 'export receipt');
+  check(!!sharedCopy && (await modules[0].readBackup(sharedCopy)).length === original.length, 'Shared backup includes the whole collection');
+  check($('#backup-status').textContent?.includes('Última exportación'), 'Settings show the exported snapshot');
+  const restoreAdd = currentRealm.IDBObjectStore.prototype.add;
+  let additions = 0;
+  currentRealm.IDBObjectStore.prototype.add = function (...args: Parameters<IDBObjectStore['add']>) {
+    const result = restoreAdd.apply(this, args);
+    if (++additions === 2) this.transaction.abort();
+    return result;
+  };
+  let aborted = false;
+  try { await modules[1].restoreSounds(original.map((sound, i) => ({ ...sound, id: `rollback-${i}` }))); }
+  catch { aborted = true; }
+  finally { currentRealm.IDBObjectStore.prototype.add = restoreAdd; }
+  check(aborted && (await modules[1].allSounds()).length === original.length, 'An interrupted restore rolls back every inserted sound');
+  Object.defineProperty(currentRealm.navigator, 'storage', { configurable: true, value: { persisted: async () => false, persist: async () => false } });
+  $('[data-close="settings-dialog"]').click(); $('#settings-trigger').click();
+  await wait(() => !$('#protect-storage').hidden, 'protection can be requested');
+  $('#protect-storage').click();
+  await wait(() => !$<HTMLButtonElement>('#protect-storage').disabled, 'protection denial');
+  check($('#persistence-status').textContent?.includes('no concedida'), 'Denied persistence is never shown as protected');
+  Object.defineProperty(currentRealm.navigator, 'storage', { configurable: true, value: { persisted: async () => true, persist: async () => true } });
+  $('#protect-storage').click();
+  await wait(() => $('#persistence-status').textContent?.includes('activada'), 'protection granted');
+  check($('#protect-storage').hidden, 'Granted persistence hides redundant request');
+  passed.push('Backup sharing cancellation / exported snapshot / persistence granted and denied');
+
   await modules[1].removeSound(original[0].id);
   const restore = new currentRealm.DataTransfer(); restore.items.add(new currentRealm.File([backup], 'collection.tapzi'));
   $<HTMLInputElement>('#backup-file').files = restore.files; $('#backup-file').dispatchEvent(new currentRealm.Event('change'));

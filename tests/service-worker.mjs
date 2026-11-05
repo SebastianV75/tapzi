@@ -16,7 +16,7 @@ const site = createServer(async (req, res) => {
   const pathname = new URL(req.url, 'http://local').pathname;
   try {
     let body = await readFile(path.join(outDir, pathname === '/' ? 'index.html' : path.normalize(pathname)));
-    if (pathname === '/sw.js') body = Buffer.concat([body, Buffer.from(`\n// release ${version}\n`)]);
+    if (pathname === '/sw.js') body = Buffer.from(body.toString().replace(/const CACHE = '([^']+)'/, (_, cache) => `const CACHE = '${cache}-release-${version}'`));
     res.writeHead(200, { 'Content-Type': types[path.extname(pathname) || '.html'] ?? 'application/octet-stream', 'Cache-Control': 'no-cache' });
     res.end(body);
   } catch { res.writeHead(404).end(); }
@@ -89,6 +89,29 @@ try {
   if (await first.evaluate(bannerVisible)) throw new Error('First install offered an update that does not exist');
   console.log('PASS first install does not offer an update');
 
+  await first.waitFor(`document.querySelector('#board').getAttribute('aria-busy') === 'false'`, 'collection ready');
+  await first.evaluate(`document.querySelector('#demo-trigger').click()`);
+  await first.waitFor(`document.querySelector('#total').textContent === '3'`, 'saved audio before update');
+  const collectionSnapshot = `new Promise((resolve, reject) => {
+    const request = indexedDB.open('tapzi', 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result, tx = db.transaction('sounds'), rows = tx.objectStore('sounds').getAll();
+      tx.oncomplete = async () => {
+        db.close();
+        try {
+          const records = await Promise.all(rows.result.map(async sound => ({ ...sound,
+            blob: sound.source === 'local' ? Array.from(new Uint8Array(await sound.blob.arrayBuffer())) : null,
+          })));
+          resolve(JSON.stringify(records.sort((a, b) => a.id.localeCompare(b.id))));
+        } catch (error) { reject(error); }
+      };
+      tx.onabort = () => { db.close(); reject(tx.error); };
+    };
+  })`;
+  const beforeCollection = await first.evaluate(collectionSnapshot);
+  const beforeCaches = await first.evaluate(`caches.keys()`);
+
   const second = await openTab();
   await second.waitFor(controlled, 'second tab is controlled');
   version += 1;
@@ -101,6 +124,13 @@ try {
   await first.waitFor(reloaded, 'update reloads the tab that applied it');
   await first.waitFor(`!${bannerVisible}`, 'banner clears after updating');
   console.log('PASS updating activates the new version and reloads');
+  const afterCollection = await first.evaluate(collectionSnapshot);
+  if (beforeCollection !== afterCollection) throw new Error('Updating changed the saved audio bytes or metadata');
+  await first.waitFor(`document.querySelector('#total')?.textContent === '3'`, 'collection is loaded after update even in a background tab');
+  const afterCaches = await first.evaluate(`caches.keys()`);
+  if (beforeCaches.some(key => key.startsWith('tapzi-shell-') && afterCaches.includes(key))) throw new Error('Old shell cache was not removed');
+  console.log('PASS new release deletes the old shell cache but preserves every audio byte and record');
+
 
   await second.waitFor(`navigator.serviceWorker.getRegistration().then(r => !r.waiting)`, 'other tab sees no waiting worker');
   if (!(await second.evaluate(bannerVisible))) {

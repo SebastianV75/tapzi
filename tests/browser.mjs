@@ -82,12 +82,53 @@ try {
   if (result.status !== 'passed') process.exitCode = 1;
   else {
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    const deniedStorageScript = await call('Page.addScriptToEvaluateOnNewDocument', { source: `{
+      const open = indexedDB.open.bind(indexedDB); window.allowStorage = false;
+      indexedDB.open = (...args) => { if (!window.allowStorage) throw new DOMException('Storage temporarily denied', 'SecurityError'); return open(...args); };
+    }` });
     const mobileLoaded = nextEvent('Page.loadEventFired', sessionId);
     await call('Page.navigate', { url: origin });
     await mobileLoaded;
     await call('Runtime.evaluate', {
       expression: `new Promise(resolve => { const check = () => { if (document.querySelector('#board')?.getAttribute('aria-busy') === 'false') resolve(true); else setTimeout(check, 20); }; check(); })`, awaitPromise: true,
     });
+    const recovered = await call('Runtime.evaluate', {
+      expression: `new Promise((resolve, reject) => {
+        if (document.querySelector('#retry-storage').hidden) { reject(new Error('Denied storage did not offer recovery')); return; }
+        window.allowStorage = true; document.querySelector('#retry-storage').click();
+        const deadline = Date.now() + 6000;
+        const check = () => {
+          if (document.querySelector('#retry-storage').hidden && !document.querySelector('.add-trigger').disabled) resolve(true);
+          else if (Date.now() > deadline) reject(new Error('Storage retry did not recover'));
+          else setTimeout(check, 20);
+        }; check();
+      })`, awaitPromise: true, returnByValue: true,
+    });
+    if (recovered.exceptionDetails || recovered.result.value !== true) throw new Error(recovered.exceptionDetails?.exception?.description || 'Startup storage recovery failed');
+    await call('Page.removeScriptToEvaluateOnNewDocument', { identifier: deniedStorageScript.identifier });
+    console.log('PASS denied storage at startup / retry without reloading / collection recovered');
+    const stalledStorageScript = await call('Page.addScriptToEvaluateOnNewDocument', { source: `{
+      const open = indexedDB.open.bind(indexedDB); let first = true;
+      indexedDB.open = (...args) => { if (first) { first = false; return {}; } return open(...args); };
+    }` });
+    const stalledLoaded = nextEvent('Page.loadEventFired', sessionId);
+    await call('Page.navigate', { url: origin }); await stalledLoaded;
+    const automaticallyRecovered = await call('Runtime.evaluate', {
+      expression: `new Promise((resolve, reject) => {
+        if (document.querySelector('#collection-loading').hidden || !document.querySelector('#empty').hidden) { reject(new Error('A pending read must show loading, not an empty library')); return; }
+        document.querySelector('#search').dispatchEvent(new Event('input'));
+        if (!document.querySelector('#empty').hidden) { reject(new Error('Filtering before loading showed an empty collection')); return; }
+        const deadline = Date.now() + 7000;
+        const check = () => {
+          if (!document.querySelector('.add-trigger').disabled && document.querySelector('#collection-loading').hidden && Number(document.querySelector('#total').textContent) > 0) resolve(true);
+          else if (Date.now() > deadline) reject(new Error('A stalled database open did not recover automatically'));
+          else setTimeout(check, 25);
+        }; check();
+      })`, awaitPromise: true, returnByValue: true,
+    });
+    if (automaticallyRecovered.exceptionDetails || automaticallyRecovered.result.value !== true) throw new Error(automaticallyRecovered.exceptionDetails?.exception?.description || 'Automatic storage recovery failed');
+    await call('Page.removeScriptToEvaluateOnNewDocument', { identifier: stalledStorageScript.identifier });
+    console.log('PASS stalled startup shows loading / automatic reconnection restores the collection without closing the app');
     // A separate production origin exercises the built worker, not Vite dev caching.
     production = await preview({ preview: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
     const prodOrigin = `http://127.0.0.1:${production.httpServer.address().port}`;

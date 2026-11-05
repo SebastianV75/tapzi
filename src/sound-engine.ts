@@ -17,13 +17,11 @@ export interface SoundEngine {
   cached(sound: Sound): AudioBuffer | undefined;
   /** Decodes in the background so the next tap is instant. Never rejects. */
   prepare(sound: Sound): Promise<void>;
-  /** True when a tap can afford to wait for this sound to decode. Longer sounds should start on the media element within the gesture. */
-  decodesQuickly(sound: Sound): boolean;
+  /** Favors recently requested sounds when preparing the library. */
+  prioritize(sound: Sound): void;
   /** Call from a gesture: replaces a context that stopped responding while the browser still allows starting a new one. */
   wake(): void;
-  /** Decodes now for a waiting tap, giving up after a moment so the media element can take over. */
-  decoded(sound: Sound): Promise<AudioBuffer | undefined>;
-  /** Keeps memory in step with the library and warms the newest sounds. */
+  /** Keeps memory in step with the library and warms recent sounds and favorites first. */
   sync(sounds: Sound[]): void;
   /** `onStalled` means no sound is coming out, so the caller should play it another way. */
   open(buffer: AudioBuffer, onEnded: () => void, onStalled: () => void): Playback;
@@ -33,8 +31,6 @@ const BUDGET_BYTES = 128 * 1024 * 1024; // decoded PCM kept ready: about six min
 const PRELOAD_LIMIT = BUDGET_BYTES * 0.75; // background warming stops here; taps may still fill the rest
 const MAX_SECONDS = 120; // the longest clip the editor produces; longer files stream from the media element
 const UNKNOWN_LENGTH_MAX_BYTES = 2 * 1024 * 1024;
-const QUICK_SECONDS = 30; // clips this short decode well within TAP_WAIT_MS
-const TAP_WAIT_MS = 1200; // how long a tap waits for its decode before using the media element
 const DECODE_TIMEOUT_MS = 15000; // a stuck decode must not hold up the sounds queued behind it
 const MAX_ATTEMPTS = 3; // reading a stored file can fail for a moment, so one failure is not final
 const STALL_MS = 600; // a context that has played before and whose clock has not moved by now is stuck
@@ -61,7 +57,11 @@ export function createSoundEngine(): SoundEngine | null {
   const context = (): AudioContext => {
     if (ctx) return ctx;
     const created = new AudioContext();
-    created.addEventListener('statechange', () => { if (ctx === created && created.state === 'running') ran = true; });
+    created.addEventListener('statechange', () => {
+      if (ctx !== created) return;
+      if (created.state === 'running') ran = true;
+      else if (document.visibilityState !== 'hidden') recheck?.();
+    });
     if (created.state === 'running') ran = true;
     return ctx = created;
   };
@@ -69,6 +69,7 @@ export function createSoundEngine(): SoundEngine | null {
     if (ctx === old) { ctx = null; ran = false; }
     void old.close().catch(() => undefined);
   };
+  let lifecycle: (() => void) | null = null;
   let recheck: (() => void) | null = null; // re-arms the stall check of the sound in progress
   // Browsers only let audio start from a gesture. Any gesture may be a scroll, so this only asks the context to
   // continue, which also lets a sound interrupted by a call carry on. If it does not, that sound's check reports it.
@@ -90,6 +91,8 @@ export function createSoundEngine(): SoundEngine | null {
     } catch { /* Taps fall back to the media element. */ }
   };
   for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) document.addEventListener(type, unlock, { capture: true, passive: true });
+  document.addEventListener('visibilitychange', () => lifecycle?.());
+  document.defaultView?.addEventListener('pageshow', () => lifecycle?.());
 
   const cache = new Map<string, AudioBuffer>(); // insertion order doubles as least-recently-used order
   const pending = new Map<string, Promise<void>>();
@@ -97,13 +100,18 @@ export function createSoundEngine(): SoundEngine | null {
   let used = 0;
   let queue: LocalSound[] = [];
   let draining = false;
+  let library: Sound[] = [];
+  const recent = new Map<string, number>();
+  let sequence = 0;
+  let targets = new Set<string>();
+  let liveKeys: Set<string> | undefined;
   const sizeOf = (buffer: AudioBuffer): number => buffer.length * buffer.numberOfChannels * 4;
   const keyOf = (sound: LocalSound): string => `${sound.id}:${sound.blob.size}`;
   const eligible = (sound: LocalSound): boolean => sound.duration === undefined ? sound.blob.size <= UNKNOWN_LENGTH_MAX_BYTES : sound.duration <= MAX_SECONDS;
   const canDecode = (sound: Sound): boolean => sound.source === 'local' && eligible(sound) && (attempts.get(keyOf(sound)) ?? 0) < MAX_ATTEMPTS;
-  const decodesQuickly = (sound: Sound): boolean => sound.source === 'local' && canDecode(sound) && (sound.duration ?? 0) <= QUICK_SECONDS;
 
   function remember(key: string, buffer: AudioBuffer): void {
+    if (liveKeys && !liveKeys.has(key)) return; // deleted while its decode was in flight
     const size = sizeOf(buffer);
     if (size > BUDGET_BYTES) { attempts.set(key, MAX_ATTEMPTS); return; } // it will never fit, so do not decode it again
     if (cache.has(key)) return; // a decode that outlived its timeout can arrive after the retry
@@ -127,38 +135,60 @@ export function createSoundEngine(): SoundEngine | null {
     if (!job) {
       // An offline context decodes without needing a gesture; the result plays on any context.
       const decode = sound.blob.arrayBuffer().then(data => new OfflineAudioContext(1, 1, 44100).decodeAudioData(data)).then(buffer => remember(key, buffer));
-      const timeout = new Promise<void>((_, reject) => { setTimeout(() => reject(new Error('Decode timed out')), DECODE_TIMEOUT_MS); });
+      let timer: ReturnType<typeof setTimeout>;
+      const timeout = new Promise<void>((_, reject) => { timer = setTimeout(() => reject(new Error('Decode timed out')), DECODE_TIMEOUT_MS); });
       job = Promise.race([decode, timeout])
         .catch((error: unknown) => {
           const bad = error instanceof DOMException && error.name === 'EncodingError'; // the file itself, so retrying cannot help
           attempts.set(key, bad ? MAX_ATTEMPTS : (attempts.get(key) ?? 0) + 1);
         })
-        .finally(() => { pending.delete(key); });
+        .finally(() => { clearTimeout(timer); pending.delete(key); });
       pending.set(key, job);
     }
     return job;
   }
-  function decoded(sound: Sound): Promise<AudioBuffer | undefined> {
-    const giveUp = new Promise<void>(resolve => { setTimeout(resolve, TAP_WAIT_MS); });
-    return Promise.race([prepare(sound), giveUp]).then(() => cached(sound));
-  }
   async function drain(): Promise<void> {
     draining = true;
     try {
-      while (queue.length && used < PRELOAD_LIMIT) { await prepare(queue.shift()!); await idle(); }
+      while (queue.length) {
+        // A newly favored sound may displace cold buffers, but never the current warm set.
+        if (used >= PRELOAD_LIMIT) {
+          for (const [key, buffer] of cache) {
+            if (targets.has(key)) continue;
+            cache.delete(key); used -= sizeOf(buffer);
+            if (used < PRELOAD_LIMIT) break;
+          }
+          if (used >= PRELOAD_LIMIT) break;
+        }
+        await prepare(queue.shift()!); await idle();
+      }
     } finally { draining = false; }
   }
   function sync(sounds: Sound[]): void {
-    const live = new Set<string>();
-    queue = [];
-    for (const sound of sounds) {
-      if (sound.source !== 'local') continue;
-      const key = keyOf(sound);
-      live.add(key);
-      if (!cache.has(key) && !pending.has(key) && canDecode(sound)) queue.push(sound);
-    }
+    library = sounds;
+    const live = new Set(sounds.filter((s): s is LocalSound => s.source === 'local').map(keyOf));
+    liveKeys = live;
+    for (const key of attempts.keys()) if (!live.has(key)) attempts.delete(key);
     for (const [key, buffer] of cache) if (!live.has(key)) { cache.delete(key); used -= sizeOf(buffer); }
+    for (const key of recent.keys()) if (!sounds.some(sound => sound.id === key)) recent.delete(key);
+    const ranked = sounds.filter((s): s is LocalSound => s.source === 'local' && canDecode(s)).sort((a, b) =>
+      (recent.get(b.id) ?? 0) - (recent.get(a.id) ?? 0) || Number(b.favorite) - Number(a.favorite) ||
+      (a.duration ?? MAX_SECONDS) - (b.duration ?? MAX_SECONDS) || b.createdAt - a.createdAt);
+    let planned = 0;
+    targets = new Set(); queue = [];
+    for (const sound of ranked) {
+      const key = keyOf(sound);
+      const bytes = cache.has(key) ? sizeOf(cache.get(key)!) : (sound.duration ?? MAX_SECONDS) * 48000 * 2 * 4;
+      if (planned + bytes > PRELOAD_LIMIT) continue;
+      planned += bytes; targets.add(key);
+      if (!cache.has(key) && !pending.has(key)) queue.push(sound);
+    }
     if (!draining && queue.length) void drain();
+  }
+  function prioritize(sound: Sound): void {
+    if (sound.source !== 'local') return;
+    recent.set(sound.id, ++sequence);
+    sync(library);
   }
 
   function open(buffer: AudioBuffer, onEnded: () => void, onStalled: () => void): Playback {
@@ -168,9 +198,16 @@ export function createSoundEngine(): SoundEngine | null {
     let offset = 0, startedAt = 0, paused = true, checks = 0, watching = false;
     const position = (): number => paused || !source || !host ? offset : Math.min(buffer.duration, offset + host.currentTime - startedAt);
     const again = (): void => { if (!watching && host && !paused) watch(host); };
+    const returned = (): void => {
+      // Timers may have been frozen in the background. Start a fresh check on return.
+      checks++; watching = false;
+      if (document.visibilityState === 'hidden' || paused) return;
+      unlock(); again();
+    };
     const detach = (): void => {
       checks++; watching = false;
       if (recheck === again) recheck = null;
+      if (lifecycle === returned) lifecycle = null;
       const node = source, gain = output, c = host; source = null; output = null;
       if (!node || !gain || !c) return;
       node.onended = () => { node.disconnect(); gain.disconnect(); };
@@ -194,7 +231,7 @@ export function createSoundEngine(): SoundEngine | null {
       setTimeout(() => {
         if (check !== checks) return;
         watching = false;
-        if (paused || (c.state === 'running' && c.currentTime > before)) return;
+        if (document.visibilityState === 'hidden' || paused || (c.state === 'running' && c.currentTime > before)) return;
         offset = position(); discard(c); detach(); paused = true; onStalled();
       }, ran && c === ctx ? STALL_MS : FIRST_START_MS);
     }
@@ -203,7 +240,7 @@ export function createSoundEngine(): SoundEngine | null {
       paused = false;
       wake();
       const c = context();
-      watch(c); recheck = again;
+      host = c; watch(c); recheck = again; lifecycle = returned;
       if (c.state === 'running') { begin(); return; }
       c.resume().then(() => { if (!paused && !source) begin(); }, () => undefined); // a refusal is left for the watch to report
     };
@@ -217,5 +254,5 @@ export function createSoundEngine(): SoundEngine | null {
     };
   }
 
-  return { cached, prepare, decodesQuickly, wake, decoded, sync, open };
+  return { cached, prepare, prioritize, wake, sync, open };
 }
