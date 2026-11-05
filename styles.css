@@ -1,4 +1,6 @@
 /* Tapzi — Pond's paper, ink and color; iPhone's touch and restraint. */
+/* Baloo 2 by Ek Type, SIL Open Font License 1.1 (public/fonts/Baloo2-OFL.txt). Latin subset as served by Google Fonts, unmodified. */
+@font-face { font-family: 'Baloo 2'; font-style: normal; font-weight: 500 800; font-display: swap; src: url('/fonts/baloo2-latin.woff2') format('woff2'); }
 :root {
   color-scheme: light;
   --paper: #e1ebf6;
@@ -14,7 +16,7 @@
   --peach: #f1cbb7;
   --mint: #d3e3c4;
   --blue: #c0d7ec;
-  --display: Georgia, 'Times New Roman', serif;
+  --display: 'Baloo 2', ui-rounded, system-ui, sans-serif;
   --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
   --error: #a72f39;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -46,7 +48,7 @@ svg { display: block; flex-shrink: 0; }
 .skip-link:focus { transform: none; }
 .topbar, main { max-width: 1064px; margin-inline: auto; }
 .topbar { display: flex; align-items: center; justify-content: space-between; min-height: 100px; gap: 20px; }
-.brand { display: inline-flex; align-items: center; min-height: 44px; gap: 10px; font: italic 36px/1 var(--display); letter-spacing: -1.8px; text-decoration: none; }
+.brand { display: inline-flex; align-items: center; min-height: 44px; gap: 10px; font: 700 36px/1 var(--display); letter-spacing: -.5px; text-decoration: none; }
 .brand-mark { display: grid; place-items: center; width: 37px; height: 37px; border: 1px solid var(--ink); border-radius: 12px; background: var(--lime); color: var(--ink); margin-right: 2px; box-shadow: 0 2px 0 var(--ink); }
 .brand-mark .icon { width: 23px; height: 23px; stroke-width: 1.5; }
 .brand-dot { color: var(--ink); margin-left: -9px; }
@@ -58,8 +60,8 @@ svg { display: block; flex-shrink: 0; }
 .icon-button { width: 44px; padding: 10px; border-radius: 50%; }
 .settings-trigger { border-color: var(--outline); background: #f5f8fc70; }
 .page-heading { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding-block: 4px 28px; }
-h1 { font: 54px/1.12 var(--display); letter-spacing: -2.2px; }
-.title-highlight { background: var(--lavender); box-decoration-break: clone; -webkit-box-decoration-break: clone; padding: 0 5px 3px; }
+h1 { font: 700 54px/1.1 var(--display); letter-spacing: -1px; }
+.title-highlight { display: inline-block; background: var(--lavender); line-height: 1; padding: 6px 8px 2px; border-radius: 4px; }
 .accent { color: var(--accent); }
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 24px; padding-top: 20px; border-top: 1px solid var(--outline); }
 .filters { display: flex; gap: 3px; border: 1px solid var(--line); background: #29312f08; padding: 3px; border-radius: 15px; }
@@ -86,7 +88,7 @@ input::placeholder { color: #64717b; opacity: 1; }
 .sound-card.is-playing { --pad-bg: var(--lime); outline: 2px solid var(--ink); outline-offset: 3px; }
 main { padding-bottom: 170px; }
 .empty-state, .no-results { text-align: center; padding: 64px 16px 72px; }
-.empty-state h2, .no-results h2 { font: 29px/1.2 var(--display); letter-spacing: -.7px; }
+.empty-state h2, .no-results h2 { font: 700 29px/1.2 var(--display); letter-spacing: -.3px; }
 .empty-state p, .no-results p { margin: 14px 0 24px; color: var(--muted); font-size: 15px; line-height: 1.7; }
 .empty-art { display: flex; justify-content: center; align-items: center; height: 116px; margin-bottom: 24px; }
 .mini-pad { display: grid; place-items: center; width: 72px; height: 86px; border-radius: 16px; box-shadow: 0 3px 0 #29312f50; color: var(--ink); border: 1px solid var(--outline); }
@@ -121,7 +123,7 @@ html:has(dialog[open]) { overflow: hidden; }
 .dialog-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .dialog-heading > .icon-button { margin: -7px -8px 0 0; color: var(--muted); background: #29312f0b; background-clip: padding-box; border: 6px solid transparent; padding: 5px; }
 .dialog-heading > .icon-button .icon { width: 18px; height: 18px; stroke-width: 2; }
-.dialog-heading h2 { font: 29px/1.15 var(--display); letter-spacing: -.9px; }
+.dialog-heading h2 { font: 700 29px/1.15 var(--display); letter-spacing: -.3px; }
 .dialog-eyebrow { font: 10px/1.4 var(--mono); letter-spacing: 1px; color: var(--muted); margin-bottom: 9px; }
 #dialog-description { color: var(--muted); font-size: 14px; margin: 10px 0 22px; }
 .source-options { display: flex; border: 1px solid var(--line); padding: 3px; margin: 0 0 20px; background: #e6ebf1; border-radius: 15px; gap: 4px; }
@@ -235,7 +237,7 @@ body:has(.transport:not([hidden])) .toast { bottom: 150px; }
   body { padding-inline: max(20px, env(safe-area-inset-left)) max(20px, env(safe-area-inset-right)); }
   .topbar { min-height: 84px; }
   .brand { font-size: 32px; }.brand-mark { width: 34px; height: 34px; }
-  .page-heading { padding-block: 4px 20px; }h1 { font-size: 44px; letter-spacing: -1.8px; }  .desktop-add { display: none; }
+  .page-heading { padding-block: 4px 20px; }h1 { font-size: 44px; letter-spacing: -.8px; }  .desktop-add { display: none; }
   .toolbar { flex-direction: column-reverse; align-items: stretch; gap: 14px; margin-bottom: 20px; padding-top: 18px; }
   .search { width: 100%; }.search input { min-height: 46px; }.filter { flex: 1; }
   .board { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }

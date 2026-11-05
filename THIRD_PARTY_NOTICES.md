@@ -6,6 +6,10 @@ Unslop was created by Damir Sokolovsky ([@heydamir](https://x.com/heydamir)). Th
 
 Pond by Butterfly is a user-selected aesthetic reference. Tapzi does not distribute its proprietary fonts, illustrations, or trademarks.
 
+## Baloo 2
+
+Titles use [Baloo 2](https://github.com/EkType/Baloo2) by Ek Type, licensed under the [SIL Open Font License 1.1](https://openfontlicense.org). The Latin subset, as served by Google Fonts, is bundled unmodified as `public/fonts/baloo2-latin.woff2`; the license text is in `public/fonts/Baloo2-OFL.txt`.
+
 ## Lucide icons
 
 Inline icon paths are based on [Lucide](https://lucide.dev/license), ISC licensed.
