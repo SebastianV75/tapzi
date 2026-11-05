@@ -28,7 +28,7 @@ export default defineConfig(({ mode }) => {
       enforce: 'post',
       apply: 'build',
       generateBundle(_options, bundle) {
-        const publicFiles = ['icon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'manifest.webmanifest', 'fonts/baloo2-latin.woff2'];
+        const publicFiles = ['icon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'manifest.webmanifest', 'fonts/baloo2-latin.woff2', 'fonts/mulish-latin.woff2'];
         const assets = [...new Set(['index.html', ...Object.keys(bundle).filter(name => !name.endsWith('.map')), ...publicFiles])];
         const hash = createHash('sha256');
         for (const output of Object.values(bundle)) hash.update(output.type === 'chunk' ? output.code : output.source);

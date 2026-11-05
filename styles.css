@@ -1,5 +1,7 @@
 /* Tapzi — Pond's paper, ink and color; iPhone's touch and restraint. */
 /* Baloo 2 by Ek Type, SIL Open Font License 1.1 (public/fonts/Baloo2-OFL.txt). Latin subset as served by Google Fonts, unmodified. */
+/* Mulish by The Mulish Project Authors, SIL Open Font License 1.1 (public/fonts/Mulish-OFL.txt). Latin subset as served by Google Fonts, unmodified. */
+@font-face { font-family: 'Mulish'; font-style: normal; font-weight: 400 800; font-display: swap; src: url('/fonts/mulish-latin.woff2') format('woff2'); }
 @font-face { font-family: 'Baloo 2'; font-style: normal; font-weight: 500 800; font-display: swap; src: url('/fonts/baloo2-latin.woff2') format('woff2'); }
 :root {
   color-scheme: light;
@@ -19,7 +21,7 @@
   --display: 'Baloo 2', ui-rounded, system-ui, sans-serif;
   --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
   --error: #a72f39;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Mulish', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: var(--ink);
   background: var(--paper);
   font-size: 16px;
@@ -36,7 +38,7 @@ button { cursor: pointer; -webkit-user-select: none; user-select: none; }
 button:disabled { opacity: .48; cursor: wait; }
 button, input, video { max-width: 100%; }
 a { color: inherit; }
-button { font-weight: 550; }
+button { font-weight: 700; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 h1,h2,h3,p { margin: 0; }
 h1,h2,h3 { line-height: 1.2; text-wrap: balance; }
@@ -78,7 +80,7 @@ input::placeholder { color: #64717b; opacity: 1; }
 .sound-card[data-color='mint'] { --pad-bg: var(--mint); }
 .sound-card[data-color='blue'] { --pad-bg: var(--blue); }
 .pad { display: grid; place-items: center; width: 100%; min-height: 132px; padding: 40px 14px 20px; border: 0; border-radius: 18px; background: transparent; text-align: center; }
-.pad-name { font-size: 17px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; letter-spacing: -.2px; }
+.pad-name { font-size: 17px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; letter-spacing: -.2px; }
 .favorite-button, .more-button { position: absolute; top: 4px; width: 44px; height: 44px; display: grid; place-items: center; padding: 12px; background: transparent; color: #46514e; border: 0; border-radius: 50%; }
 .favorite-button { right: 4px; }
 .more-button { left: 4px; }
@@ -138,7 +140,7 @@ html:has(dialog[open]) { overflow: hidden; }
 .file-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 1; }
 .file-picker:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 4px; }
 .file-picker-content { display: grid; justify-items: center; gap: 8px; pointer-events: none; }
-.file-picker-content > strong { font-size: 16px; font-weight: 550; }
+.file-picker-content > strong { font-size: 16px; font-weight: 650; }
 .file-picker-content > span { font-size: 13px; color: var(--muted); }
 .upload-mark { display: grid; place-items: center; width: 48px; height: 48px; background: var(--lime); border: 1px solid var(--outline); border-radius: 15px; margin-bottom: 8px; color: var(--ink) !important; box-shadow: 0 2px 0 var(--outline); }
 .file-picker-content > .file-picker-action { display: inline-flex; align-items: center; gap: 12px; margin: 8px 0 12px; color: var(--accent); font-weight: 600; }
@@ -146,14 +148,14 @@ html:has(dialog[open]) { overflow: hidden; }
 .selected-file { display: flex; align-items: center; gap: 12px; padding: 12px; background: #e6edf5; border: 1px solid var(--line); border-radius: 15px; margin-bottom: 18px; }
 .file-mark { display: grid; place-items: center; width: 38px; height: 42px; color: var(--accent); flex-shrink: 0; }
 .selected-file > div { min-width: 0; flex: 1; }
-.selected-file strong { display: block; font-size: 13px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.selected-file strong { display: block; font-size: 13px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .selected-file small { font-size: 11px; }
 .selected-file > button { font-size: 12px; flex-shrink: 0; }
 #media-preview { display: block; width: 100%; max-height: 150px; border-radius: 12px; background: #f4f4f7; margin-bottom: 12px; }
 #media-preview.audio-only { display: none; }
 .preview-row { display: flex; align-items: center; gap: 12px; margin-block: 8px 20px; }
 .preview-row > div { flex: 1; min-width: 0; }
-.preview-row strong { font-size: 13px; font-weight: 550; }
+.preview-row strong { font-size: 13px; font-weight: 650; }
 .preview-row .helper { font-size: 12px; margin-top: 3px; }
 .preview-button { background: var(--ink); color: #fff; }
 .preview-row .subtle { font-size: 12px; }
@@ -174,7 +176,7 @@ html:has(dialog[open]) { overflow: hidden; }
 .precision summary { min-height: 44px; padding-block: 12px; font-size: 12px; color: var(--accent); cursor: pointer; }
 #trim-help { font-size: 11px; }
 .field { display: flex; flex-direction: column; gap: 8px; margin-block: 0 18px; min-width: 0; }
-.field > label { font-size: 13px; font-weight: 550; }
+.field > label { font-size: 13px; font-weight: 650; }
 .field > input { min-height: 48px; width: 100%; min-width: 0; padding: 12px 14px; border: 1px solid #dfe0e7; border-radius: 10px; background: #fff; font-size: 16px; }
 .field input[aria-invalid='true'] { border-color: var(--error); }
 .time-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
