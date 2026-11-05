@@ -1,5 +1,6 @@
 import { formatTime } from './sounds.ts';
 import type { Sound } from './sounds.ts';
+import type { Playback, SoundEngine } from './sound-engine.ts';
 
 interface VideoClip { videoId: string; startSeconds: number; endSeconds?: number }
 interface YouTubePlayer {
@@ -54,7 +55,7 @@ function element<T extends HTMLElement>(selector: string): T {
   if (!found) throw new Error(`Missing player element: ${selector}`);
   return found;
 }
-export function createPlayer(onChange: (id: string | null) => void): { play(sound: Sound): Promise<void>; stop(): void } {
+export function createPlayer(onChange: (id: string | null) => void, engine: SoundEngine | null = null, onPauseChange: () => void = () => undefined): { play(sound: Sound): Promise<void>; stop(): void; paused(): boolean } {
   const audio = element<HTMLAudioElement>('#audio-player');
   const wrapper = element('#youtube-wrap');
   const idle = element('#idle-player');
@@ -64,51 +65,76 @@ export function createPlayer(onChange: (id: string | null) => void): { play(soun
   let objectURL: string | null = null;
   let request = 0;
   let current: Sound | null = null;
+  let voice: Playback | null = null; // set while a decoded sound plays; otherwise the media element does
+  let ticker = 0;
   const interrupted = (error: unknown): boolean => error instanceof DOMException && error.name === 'AbortError';
   const pauseButton = element<HTMLButtonElement>('#play-pause');
   const seek = element<HTMLInputElement>('#playback-seek');
   const timeline = element('#playback-timeline');
   const replayButton = element<HTMLButtonElement>('#replay-sound');
+  const isPaused = (): boolean => voice ? voice.paused : audio.paused;
   const progress = (): void => {
     if (current?.source !== 'local') return;
-    const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
-    seek.max = String(duration || 1); seek.value = String(audio.currentTime);
+    const duration = voice ? voice.duration : Number.isFinite(audio.duration) ? audio.duration : 0;
+    const now = voice ? voice.position() : audio.currentTime;
+    seek.max = String(duration || 1); seek.value = String(now);
     seek.disabled = !duration;
-    seek.setAttribute('aria-valuetext', `${formatTime(audio.currentTime)} de ${formatTime(duration)}`);
-    element('#playback-current').textContent = formatTime(audio.currentTime);
+    seek.setAttribute('aria-valuetext', `${formatTime(now)} de ${formatTime(duration)}`);
+    element('#playback-current').textContent = formatTime(now);
     element('#playback-total').textContent = formatTime(duration);
   };
   const pauseState = (): void => {
-    pauseButton.setAttribute('aria-label', audio.paused ? 'Continuar reproducción' : 'Pausar');
-    pauseButton.querySelector('use')!.setAttribute('href', audio.paused ? '#i-play' : '#i-pause');
+    pauseButton.setAttribute('aria-label', isPaused() ? 'Continuar reproducción' : 'Pausar');
+    pauseButton.querySelector('use')!.setAttribute('href', isPaused() ? '#i-play' : '#i-pause');
+    onPauseChange();
+  };
+  // Decoded playback raises no media events, so the transport is refreshed after each action and on a short timer.
+  const voiceChanged = (): void => {
+    clearInterval(ticker);
+    if (voice && !voice.paused) ticker = window.setInterval(progress, 100);
+    progress(); pauseState();
+    state.textContent = voice?.paused ? 'En pausa' : 'Reproduciendo';
   };
   pauseButton.addEventListener('click', () => {
     if (current?.source !== 'local') return;
+    if (voice) { if (voice.paused) voice.play(); else voice.pause(); voiceChanged(); return; }
     if (!audio.paused) audio.pause();
     else { const token = request; void audio.play().catch(error => { if (token === request && !interrupted(error)) fail(new Error('No se pudo continuar el audio. Toca el sonido para intentarlo otra vez.')); }); }
   });
   replayButton.addEventListener('click', () => {
     if (current?.source !== 'local') return;
+    if (voice) { voice.seek(0); voice.play(); voiceChanged(); return; }
     const token = request; audio.currentTime = 0;
     void audio.play().catch(error => { if (token === request && !interrupted(error)) fail(new Error('No se pudo repetir el audio.')); });
   });
-  seek.addEventListener('input', () => { if (current?.source === 'local' && Number.isFinite(audio.duration)) audio.currentTime = Number(seek.value); });
+  seek.addEventListener('input', () => {
+    if (voice) { voice.seek(Number(seek.value)); voiceChanged(); return; }
+    if (current?.source === 'local' && Number.isFinite(audio.duration)) audio.currentTime = Number(seek.value);
+  });
   for (const event of ['timeupdate', 'durationchange', 'loadedmetadata']) audio.addEventListener(event, progress);
   for (const event of ['playing', 'pause', 'ended']) audio.addEventListener(event, pauseState);
 
 
-  function stop(): void {
+  /** Stops whatever is playing without touching the interface, so a new sound can start first. */
+  function release(): void {
     request++;
     current = null;
-    audio.pause();
-    audio.removeAttribute('src');
-    audio.load();
+    clearInterval(ticker);
+    voice?.stop(); voice = null;
+    if (!audio.paused) audio.pause();
+    if (audio.hasAttribute('src')) { audio.removeAttribute('src'); audio.load(); }
     audio.hidden = true;
     if (objectURL) URL.revokeObjectURL(objectURL);
     objectURL = null;
-    if (player) { player.destroy(); player = null; }
-    wrapper.replaceChildren(Object.assign(document.createElement('div'), { id: 'youtube-player' }));
-    wrapper.hidden = true;
+    if (player || !wrapper.hidden) {
+      if (player) { player.destroy(); player = null; }
+      wrapper.replaceChildren(Object.assign(document.createElement('div'), { id: 'youtube-player' }));
+      wrapper.hidden = true;
+    }
+  }
+
+  function stop(): void {
+    release();
     idle.hidden = false;
     state.textContent = 'En pausa';
     message.textContent = '';
@@ -125,21 +151,28 @@ export function createPlayer(onChange: (id: string | null) => void): { play(soun
     message.textContent = error.message;
   }
 
-  audio.addEventListener('ended', stop);
+  audio.addEventListener('ended', () => { if (!voice) stop(); });
   audio.addEventListener('error', () => {
-    if (current?.source === 'local') fail(new Error('Este formato no se puede reproducir aquí. Probá MP3 o WAV.'));
+    if (current?.source === 'local' && !voice) fail(new Error('Este formato no se puede reproducir aquí. Probá MP3 o WAV.'));
   });
   audio.addEventListener('playing', () => {
-    if (current?.source === 'local') state.textContent = 'Reproduciendo';
+    if (current?.source === 'local' && !voice) state.textContent = 'Reproduciendo';
   });
   audio.addEventListener('pause', () => {
-    if (current?.source === 'local') state.textContent = 'En pausa';
+    if (current?.source === 'local' && !voice) state.textContent = 'En pausa';
   });
 
   async function play(sound: Sound): Promise<void> {
-    stop();
+    const warm = sound.source === 'local' ? engine?.cached(sound) : undefined;
+    release();
     const token = request;
     current = sound;
+    if (warm && engine) {
+      // Sound first, interface second: this is the delay the user can feel.
+      voice = engine.open(warm, () => { if (token === request) stop(); },
+        () => { if (token === request) fail(new Error('No se pudo iniciar el audio. Toca el sonido para intentarlo otra vez.')); });
+      voice.play();
+    }
     onChange(sound.id);
     idle.hidden = true;
     state.textContent = 'Cargando';
@@ -148,13 +181,16 @@ export function createPlayer(onChange: (id: string | null) => void): { play(soun
     element('#track-detail').textContent = sound.source === 'youtube'
       ? `YouTube · ${formatTime(sound.start)} → ${sound.end === null ? 'final' : formatTime(sound.end)}`
       : 'Audio local · Guardado en este dispositivo';
+    message.textContent = '';
     document.querySelectorAll<HTMLButtonElement>('.stop-all').forEach(button => { button.disabled = false; });
     try {
-      if (sound.source === 'local') {
+      if (voice) voiceChanged();
+      else if (sound.source === 'local') {
         objectURL = URL.createObjectURL(sound.blob);
         audio.src = objectURL;
         audio.hidden = false;
         await audio.play();
+        if (token === request) void engine?.prepare(sound); // the next tap on this sound will be instant
       } else {
         if (!navigator.onLine) throw new Error('Este sonido es un enlace de YouTube y necesita internet. Los audios locales siguen disponibles.');
         wrapper.hidden = false;
@@ -195,5 +231,5 @@ export function createPlayer(onChange: (id: string | null) => void): { play(soun
       if (token === request && !interrupted(error)) fail(error instanceof Error ? error : new Error('No se pudo iniciar la reproducción. Intentá otra vez.'));
     }
   }
-  return { play, stop };
+  return { play, stop, paused: () => current?.source === 'local' && isPaused() };
 }

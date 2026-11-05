@@ -117,7 +117,7 @@ try {
     await call('Page.navigate', { url: prodOrigin }); await offlineLoaded;
     await evaluate(`new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error('Offline reopen failed')), 7000); const check = () => { if (document.querySelector('#total')?.textContent === '3') { clearTimeout(timer); resolve(true); } else setTimeout(check, 25); }; check(); })`);
     await evaluate(`document.querySelector('.pad').click()`);
-    await evaluate(`new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error('Offline audio failed')), 4000); const check = () => { const audio = document.querySelector('#audio-player'); if (audio && !audio.paused && audio.readyState >= 2) { clearTimeout(timer); resolve(true); } else setTimeout(check, 15); }; check(); })`);
+    await evaluate(`new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error('Offline audio failed')), 4000); const check = () => { if (document.querySelector('#play-pause')?.getAttribute('aria-label') === 'Pausar' && !document.querySelector('#playback-seek').disabled) { clearTimeout(timer); resolve(true); } else setTimeout(check, 15); }; check(); })`);
     console.log('PASS production PWA: shell precache / leave and reopen offline / persistent collection / actual offline audio');
     await evaluate(`document.querySelector('.stop-all').click()`);
     const screenshot = await call('Page.captureScreenshot', { format: 'png' });

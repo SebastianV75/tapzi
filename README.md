@@ -72,6 +72,7 @@ El almacenamiento pertenece al navegador/app instalada y al origen. iOS puede el
 - Soporte de formatos según el navegador: MP3, WAV, M4A y MP4 con AAC son los candidatos principales. Un contenedor de video no garantiza que su códec esté soportado. Un fallo muestra un mensaje y no guarda un registro incompleto.
 - Backups: hasta 200 MB y 1000 sonidos. Formato binario versionado, sin base64 ni descompresión. Se valida antes de una única transacción de restauración.
 - El service worker solo guarda los archivos de la interfaz. Los audios viven en IndexedDB; no se cachean YouTube ni APIs.
+- Reproducción rápida: los sonidos de hasta 2 minutos se decodifican en segundo plano y se mantienen en memoria (hasta 64 MB), así que suenan al instante. Uno que aún no está listo suena por el `<audio>` normal y queda listo para el siguiente toque. Si en algún dispositivo no suena, abre Tapzi con `?audio=compat` para usar siempre el `<audio>`.
 - Las actualizaciones se anuncian y se aplican cuando no hay reproducción ni editores abiertos. No borran la colección.
 
 **Pendiente de aceptación física:** Safari/iPhone, audio audible, hoja de compartir/Archivos, instalación y formatos de los videos reales del usuario. Las pruebas de Chromium no sustituyen esa comprobación.
@@ -86,6 +87,7 @@ El almacenamiento pertenece al navegador/app instalada y al origen. iOS puede el
 - `src/storage.ts`: IndexedDB y restauración atómica.
 - `src/backup.ts`: formato `.tapzi`, validación y empaquetado.
 - `src/player.ts`: reproducción local y reproductor online opcional.
+- `src/sound-engine.ts`: decodificación en segundo plano y reproducción inmediata desde memoria (Web Audio).
 - `src/offline.ts`, `vite.config.ts`: instalación, actualizaciones y service worker generado.
 
 El importador anterior con yt-dlp se conserva como herramienta de desarrollo **desactivada por defecto**. No forma parte del flujo de la app ni del bundle estático. Su documentación histórica está en [docs/importing.md](docs/importing.md).

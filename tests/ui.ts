@@ -11,6 +11,10 @@ async function wait(predicate: () => unknown, name: string): Promise<void> {
   while (!predicate()) { if (Date.now() > deadline) throw new Error(`Timed out: ${name}`); await pause(); }
 }
 function doc(): Document { return frame.contentDocument!; }
+// Playback is read from the transport, so tests hold whether a decoded sound or the media element is playing it.
+const slider = (): HTMLInputElement => doc().querySelector<HTMLInputElement>('#playback-seek')!;
+const isPlaying = (): boolean => doc().querySelector('#play-pause')!.getAttribute('aria-label') === 'Pausar' && !slider().disabled;
+const usesMediaElement = (): boolean => doc().querySelector('#audio-player')!.hasAttribute('src');
 function $<T extends HTMLElement = HTMLElement>(selector: string): T {
   const element = doc().querySelector<T>(selector);
   if (!element) throw new Error(`Missing ${selector}`);
@@ -116,16 +120,33 @@ try {
   await pause();
   check($('#playback-message').textContent === '' && !$('#mobile-transport').hidden, 'Immediate pause during pending play does not become an error');
   $('#play-pause').click();
-  const audio = $<HTMLAudioElement>('#audio-player');
-  await wait(() => audio.readyState >= 2 && !audio.paused, 'real trimmed audio playback');
-  check(Math.abs(audio.duration - 2) < .05, 'Trimming produced an actual two-second file');
+  await wait(isPlaying, 'real trimmed audio playback');
+  check(Math.abs(Number(slider().max) - 2) < .05, 'Trimming produced an actual two-second file');
   check(!$('#mobile-transport').hidden, 'Persistent mobile stop control');
-  $('#play-pause').click(); check(audio.paused, 'Compact transport pauses');
+  $('#play-pause').click();
   await wait(() => $('#play-pause').getAttribute('aria-label') === 'Continuar reproducción', 'Pause exposes resume semantics');
-  input('#playback-seek', '1'); check(Math.abs(audio.currentTime - 1) < .05, 'Seek changes real playback position');
-  $('#replay-sound').click(); await wait(() => !audio.paused, 'restart');
-  check(audio.currentTime < .5, 'Replay starts from the beginning');
-  $('.stop-all').click(); check(audio.paused && !audio.hasAttribute('src'), 'Stop releases audio');
+  input('#playback-seek', '1'); await pause(); await pause();
+  check(Math.abs(Number(slider().value) - 1) < .05, 'Seek changes real playback position');
+  $('#replay-sound').click(); await wait(() => isPlaying() && Number(slider().value) < .5, 'Replay starts from the beginning');
+  $('.stop-all').click();
+  check($('#mobile-transport').hidden && $<HTMLAudioElement>('#audio-player').paused && !usesMediaElement(), 'Stop releases audio');
+  // A sound that is not decoded yet still plays at once through the media element, and warms itself for the next tap.
+  // Compatibility mode keeps every tap on the media element.
+  const tapOnce = async (): Promise<boolean> => { $('.pad').click(); await wait(isPlaying, 'tap starts playback'); const element = usesMediaElement(); $('.stop-all').click(); return element; };
+  async function openApp(search: string): Promise<void> {
+    await new Promise<void>(resolve => { frame.onload = () => resolve(); frame.contentWindow!.location.search = search; });
+    await ready();
+  }
+  await openApp('?audio=compat');
+  check(await tapOnce() && await tapOnce(), 'Compatibility mode plays through the media element');
+  await openApp('');
+  let decoded = false;
+  for (let attempt = 0; attempt < 40 && !decoded; attempt++) { decoded = !(await tapOnce()); await pause(); }
+  check(decoded, 'After a tap warms it, the sound plays from memory without loading a media element');
+  $('.pad').click(); $('#play-pause').click(); await pause();
+  check($('#player-state').textContent === 'En pausa' && $('.is-playing .pad-meta').textContent === 'En pausa', 'Paused decoded sound is reflected on its pad');
+  $('#play-pause').click(); await wait(isPlaying, 'resume decoded sound'); $('.stop-all').click();
+  passed.push('Decoded playback from memory / media-element fallback / compatibility mode / transport / pad labels');
   $('.favorite-button').click(); await wait(() => $('.favorite-button').getAttribute('aria-pressed') === 'true', 'favorite commit');
   input('#search', 'epico'); check(doc().querySelectorAll('.pad').length === 1, 'Accent-insensitive search');
   input('#search', 'absent'); check(!$('#no-results').hidden, 'No results'); $('#clear-filter').click();
@@ -183,8 +204,8 @@ try {
   await wait(() => !$<HTMLDialogElement>('#add-dialog').open, 'MP4 AAC audio extraction');
   check(count() === '3', 'Video becomes one local sound');
   $('.pad').click();
-  await wait(() => !$<HTMLAudioElement>('#audio-player').paused && $<HTMLAudioElement>('#audio-player').readyState >= 2, 'extracted video playback');
-  check(Math.abs($<HTMLAudioElement>('#audio-player').duration - 1) < .05, 'Extracted video is exactly the chosen audio fragment');
+  await wait(isPlaying, 'extracted video playback');
+  check(Math.abs(Number(slider().max) - 1) < .05, 'Extracted video is exactly the chosen audio fragment');
   $('.stop-all').click();
   passed.push('Real MP4/AAC video import / local WAV extraction / actual trimmed playback');
 
@@ -205,8 +226,8 @@ try {
   check($<HTMLInputElement>('#local-start').value === '0' && Number($<HTMLInputElement>('#local-end').value) === 10, 'Reset restores full clip');
   input('#trim-end', '9.95');
   submit(); await wait(() => !$<HTMLDialogElement>('#add-dialog').open, 'precise trim');
-  $('.pad').click(); await wait(() => $<HTMLAudioElement>('#audio-player').readyState >= 2, 'precise playback');
-  check(Math.abs($<HTMLAudioElement>('#audio-player').duration - 9.95) < .005, 'A 50ms end trim is honored, not treated as full audio');
+  $('.pad').click(); await wait(() => !slider().disabled, 'precise playback');
+  check(Math.abs(Number(slider().max) - 9.95) < .005, 'A 50ms end trim is honored, not treated as full audio');
   $('.stop-all').click();
   open();
   const invalid = new editorRealm.DataTransfer(); invalid.items.add(new editorRealm.File(['html'], 'not-audio.html', { type: 'text/html' }));
@@ -254,8 +275,8 @@ try {
   const cloudStorage = await cloudRealm.eval(`import('/src/storage.ts')`) as typeof import('../src/storage.ts');
   const imported = (await cloudStorage.allSounds()).find(sound => sound.name === 'Desde YouTube');
   check(imported?.source === 'local' && imported.blob.size > 44, 'Imported bytes are stored, not a temporary download URL');
-  $('.pad').click(); await wait(() => !$<HTMLAudioElement>('#audio-player').paused && $<HTMLAudioElement>('#audio-player').readyState >= 2, 'imported clip playback');
-  check(Math.abs($<HTMLAudioElement>('#audio-player').duration - 1) < .05, 'Real MP3 was decoded and trimmed to one second'); $('.stop-all').click();
+  $('.pad').click(); await wait(isPlaying, 'imported clip playback');
+  check(Math.abs(Number(slider().max) - 1) < .05, 'Real MP3 was decoded and trimmed to one second'); $('.stop-all').click();
   for (const mode of ['failure', 'html', 'unauthorized']) {
     cloudMode = mode; open(); $<HTMLInputElement>('input[value="youtube"]').click();
     await wait(() => !$<HTMLButtonElement>('#fetch-youtube').disabled, `import ready: ${mode}`);

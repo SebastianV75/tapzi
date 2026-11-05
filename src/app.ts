@@ -2,6 +2,7 @@ import { COLORS, createSound, matchesSound, formatTime } from './sounds.ts';
 import type { Sound, SoundColor } from './sounds.ts';
 import { allSounds, saveSound, removeSound, restoreSounds } from './storage.ts';
 import { createPlayer } from './player.ts';
+import { createSoundEngine } from './sound-engine.ts';
 import { prepareAudio, encodeWav } from './media.ts';
 import { makeBackup, readBackup } from './backup.ts';
 import { setupOffline } from './offline.ts';
@@ -21,6 +22,7 @@ const settings = $<HTMLDialogElement>('#settings-dialog');
 const search = $<HTMLInputElement>('#search');
 const input = (id: string): HTMLInputElement => $<HTMLInputElement>(id);
 const source = (): string => input('input[name="source"]:checked').value;
+const engine = createSoundEngine();
 let sounds: Sound[] = [];
 let favoritesOnly = false;
 let activeId: string | null = null;
@@ -62,6 +64,7 @@ function setBusy(target: HTMLElement, busy: boolean): void {
   target.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input,button').forEach(node => { node.disabled = busy; });
 }
 function render(): void {
+  engine?.sync(sounds);
   const focus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const focusId = focus?.dataset.soundId; const action = focus?.dataset.action;
   const board = $('#board'); board.replaceChildren();
@@ -81,7 +84,7 @@ function render(): void {
     const top = text('span', 'pad-top', ''); const playIcon = text('span', 'pad-icon', ''); playIcon.append(icon(sound.id === activeId ? 'stop' : 'wave'));
     const position = text('span', 'pad-index', positions.get(sound.id) ?? ''); position.setAttribute('aria-hidden', 'true');
     top.append(playIcon, position);
-    const detail = sound.id === activeId ? (sound.source === 'local' && $<HTMLAudioElement>('#audio-player').paused ? 'En pausa' : 'Sonando ahora') : sound.source === 'youtube' ? 'YouTube · online' : sound.duration ? formatTime(sound.duration) : 'Audio';
+    const detail = sound.id === activeId ? (sound.source === 'local' && player.paused() ? 'En pausa' : 'Sonando ahora') : sound.source === 'youtube' ? 'YouTube · online' : sound.duration ? formatTime(sound.duration) : 'Audio';
     pad.append(top, text('span', 'pad-name', sound.name), text('span', 'pad-meta', detail));
     pad.addEventListener('click', () => { clipEditor.pause(); if (activeId === sound.id) player.stop(); else void player.play(sound); });
     const favorite = document.createElement('button'); favorite.className = `favorite-button${sound.favorite ? ' is-favorite' : ''}`;
@@ -97,12 +100,11 @@ function render(): void {
 const player = createPlayer(id => {
   activeId = id; render(); $('#mobile-transport').hidden = !id;
   document.body.classList.toggle('has-playback', !!id);
+}, engine, () => {
+  const label = document.querySelector<HTMLElement>('.is-playing .pad-meta');
+  if (label && sounds.find(sound => sound.id === activeId)?.source === 'local') label.textContent = player.paused() ? 'En pausa' : 'Sonando ahora';
 });
 document.querySelectorAll('.stop-all').forEach(button => button.addEventListener('click', player.stop));
-for (const event of ['pause', 'playing']) $('#audio-player').addEventListener(event, () => {
-  const label = document.querySelector<HTMLElement>('.is-playing .pad-meta');
-  if (label && sounds.find(sound => sound.id === activeId)?.source === 'local') label.textContent = $<HTMLAudioElement>('#audio-player').paused ? 'En pausa' : 'Sonando ahora';
-});
 async function toggleFavorite(id: string): Promise<void> {
   if (pending.has(id)) return;
   const sound = sounds.find(item => item.id === id); if (!sound) return;
