@@ -73,15 +73,21 @@ export function createPlayer(onChange: (id: string | null) => void, engine: Soun
   const timeline = element('#playback-timeline');
   const replayButton = element<HTMLButtonElement>('#replay-sound');
   const isPaused = (): boolean => voice ? voice.paused : audio.paused;
+  const shown = new Map<string, string>();
+  const setText = (selector: string, value: string): void => {
+    if (shown.get(selector) === value) return; // untouched text costs no style or layout work
+    shown.set(selector, value); element(selector).textContent = value;
+  };
   const progress = (): void => {
-    if (current?.source !== 'local') return;
+    if (current?.source !== 'local' || document.visibilityState === 'hidden') return;
     const duration = voice ? voice.duration : Number.isFinite(audio.duration) ? audio.duration : 0;
     const now = voice ? voice.position() : audio.currentTime;
     seek.max = String(duration || 1); seek.value = String(now);
     seek.disabled = !duration;
-    seek.setAttribute('aria-valuetext', `${formatTime(now)} de ${formatTime(duration)}`);
-    element('#playback-current').textContent = formatTime(now);
-    element('#playback-total').textContent = formatTime(duration);
+    const nowText = formatTime(now), totalText = formatTime(duration);
+    if (shown.get('valuetext') !== `${nowText}/${totalText}`) { shown.set('valuetext', `${nowText}/${totalText}`); seek.setAttribute('aria-valuetext', `${nowText} de ${totalText}`); }
+    setText('#playback-current', nowText);
+    setText('#playback-total', totalText);
     onProgress(duration ? Math.min(1, now / duration) : 0, isPaused());
   };
   const pauseState = (): void => {
@@ -92,7 +98,7 @@ export function createPlayer(onChange: (id: string | null) => void, engine: Soun
   // Decoded playback raises no media events, so the transport is refreshed after each action and on a short timer.
   const voiceChanged = (): void => {
     clearInterval(ticker);
-    if (voice && !voice.paused) ticker = window.setInterval(progress, 100);
+    if (voice && !voice.paused) ticker = window.setInterval(progress, 200);
     progress(); pauseState();
     state.textContent = voice?.paused ? 'En pausa' : 'Reproduciendo';
   };
@@ -122,7 +128,7 @@ export function createPlayer(onChange: (id: string | null) => void, engine: Soun
   /** Stops whatever is playing without touching the interface, so a new sound can start first. */
   function release(): void {
     request++;
-    current = null;
+    current = null; shown.clear();
     clearInterval(ticker);
     voice?.stop(); voice = null;
     if (!audio.paused) audio.pause();
@@ -198,7 +204,6 @@ export function createPlayer(onChange: (id: string | null) => void, engine: Soun
     if (current?.id === sound.id && current.source === 'local' && (voice || !engine?.cached(sound))) { restart(); return; }
     const warm = sound.source === 'local' ? engine?.cached(sound) : undefined;
     release();
-    engine?.prioritize(sound);
     if (sound.source === 'local') engine?.wake();
     const token = request;
     current = sound;
@@ -207,6 +212,7 @@ export function createPlayer(onChange: (id: string | null) => void, engine: Soun
       try { playDecoded(sound, warm, token); }
       catch { voice?.stop(); voice = null; } // A failed output must still allow media-element playback.
     }
+    engine?.prioritize(sound); // after the sound has started, so re-planning never delays it
     onChange(sound.id);
     idle.hidden = true;
     state.textContent = 'Cargando';

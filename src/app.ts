@@ -423,6 +423,14 @@ $('#demo-trigger').addEventListener('click', async () => {
 let refreshing = 0;
 let demoBusy = false;
 const collectionBusy = (): boolean => saving || editBusy || restoring || demoBusy || pending.size > 0;
+/** Keeps the objects already on screen when storage returns the same data, so a refresh costs no re-render or re-planning. */
+function reconcile(current: Sound[], items: Sound[]): Sound[] {
+  const known = new Map(current.map(sound => [sound.id, sound]));
+  const same = (a: Sound, b: Sound): boolean => a.name === b.name && a.favorite === b.favorite && a.color === b.color && a.createdAt === b.createdAt && a.source === b.source &&
+    (a.source === 'local' && b.source === 'local' ? a.blob.size === b.blob.size && a.duration === b.duration && a.fileName === b.fileName : a.source === 'youtube' && b.source === 'youtube' && a.videoId === b.videoId && a.start === b.start && a.end === b.end);
+  const merged = items.map(item => { const old = known.get(item.id); return old && same(old, item) ? old : item; });
+  return merged.length === current.length && merged.every((sound, index) => sound === current[index]) ? current : merged;
+}
 async function refreshCollection(): Promise<void> {
   // Always load the initial collection, even if an update reloads a background tab.
   if ((storageReady && document.visibilityState === 'hidden') || collectionBusy() || document.querySelector('dialog[open]')) return;
@@ -442,7 +450,9 @@ async function refreshCollection(): Promise<void> {
       items = await allSounds(); // One bounded read retry. Never replay a write.
     }
     if (token !== refreshing || before !== sounds || collectionBusy() || document.querySelector('dialog[open]')) return;
-    sounds = items; storageReady = true;
+    const firstLoad = !storageReady;
+    sounds = reconcile(sounds, items); storageReady = true;
+    if (!firstLoad && sounds === before) { errorAt('#app-error', null); return; } // nothing changed: leave the board, playback and decoded audio alone
     if (activeId && !items.some(item => item.id === activeId)) player.stop();
     render(); errorAt('#app-error', null); $('#retry-storage').hidden = true;
     document.querySelectorAll<HTMLButtonElement>('.add-trigger').forEach(button => { button.disabled = false; });
@@ -453,7 +463,8 @@ async function refreshCollection(): Promise<void> {
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void refreshCollection(); });
 window.addEventListener('pageshow', () => void refreshCollection());
-for (const modal of document.querySelectorAll('dialog')) modal.addEventListener('close', () => void refreshCollection());
+// Our own edits already update memory, so closing a dialog only needs to read storage if the first load has not succeeded.
+for (const modal of document.querySelectorAll('dialog')) modal.addEventListener('close', () => { if (!storageReady) void refreshCollection(); });
 $('#retry-storage').addEventListener('click', () => void refreshCollection());
 await refreshCollection();
 setupOffline(() => !document.querySelector('dialog[open]') && !activeId);

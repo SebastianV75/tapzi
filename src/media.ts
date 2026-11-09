@@ -40,6 +40,13 @@ export function encodeWav(channels: Float32Array[], sampleRate: number): Blob {
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
+/** True when both channels are the same signal (within one 16-bit step), so one channel sounds identical. */
+export function identicalChannels(a: Float32Array, b: Float32Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > 1 / 32768) return false;
+  return true;
+}
+
 export async function prepareAudio(file: File, start: number, end: number, duration: number): Promise<File> {
   validateMedia(file);
   clipRange(start, end, duration);
@@ -62,7 +69,8 @@ export async function prepareAudio(file: File, start: number, end: number, durat
     clipRange(start - offset, end - offset, decoded.duration);
     const first = Math.floor((start - offset) * decoded.sampleRate);
     const last = Math.min(decoded.length, Math.floor((end - offset) * decoded.sampleRate));
-    const channels = Array.from({ length: Math.min(2, decoded.numberOfChannels) }, (_, i) => decoded.getChannelData(i).subarray(first, last));
+    let channels = Array.from({ length: Math.min(2, decoded.numberOfChannels) }, (_, i) => decoded.getChannelData(i).subarray(first, last));
+    if (channels.length === 2 && identicalChannels(channels[0], channels[1])) channels = [channels[0]]; // dual-mono saves half the space, losslessly
     const wav = encodeWav(channels, decoded.sampleRate);
     return new File([wav], `${file.name.replace(/\.[^.]+$/, '')}.wav`, { type: 'audio/wav' });
   } catch (error) {

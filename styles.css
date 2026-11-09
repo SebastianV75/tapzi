@@ -247,7 +247,7 @@ body:has(.transport:not([hidden])) .toast { bottom: 150px; }
   /* Only sounds that were not on screen before animate in, so searching or favouriting never replays it. */
   .sound-card.is-new { animation: card-in 380ms cubic-bezier(.22, 1, .36, 1) backwards; animation-delay: calc(var(--i, 0) * 35ms); }
   @keyframes card-in { from { opacity: 0; transform: translateY(12px); } }
-  .sound-card::before { transition: clip-path 200ms linear; }
+  .sound-card::before { transition: clip-path 220ms linear; }
   .is-playing .eq i { animation: eq 880ms ease-in-out infinite; }
   .eq i:nth-child(2) { animation-duration: 720ms; animation-delay: -240ms; }
   .eq i:nth-child(3) { animation-duration: 1000ms; animation-delay: -520ms; }
@@ -294,10 +294,12 @@ body:has(.transport:not([hidden])) .toast { bottom: 150px; }
   dialog { padding-inline: 18px; }.preview-row { gap: 8px; }.preview-row strong { font-size: 12px; }.preview-row .subtle { padding-inline: 8px; }
 }
 /* Frosted material belongs to floating controls; sound pads stay flat and clear. */
-@supports ((backdrop-filter: blur(12px)) or (-webkit-backdrop-filter: blur(12px))) {
+/* Blur only on a mouse-and-keyboard device: re-blurring a scrolling grid every frame is what makes phones stutter. */
+@media (hover: hover) and (pointer: fine) { @supports ((backdrop-filter: blur(12px)) or (-webkit-backdrop-filter: blur(12px))) {
   .toolbar { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
   .transport, .bottom-add { background: #f5f8fce8; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
-}
+} }
+@media (hover: none), (pointer: coarse) { .toolbar { background: var(--paper); } .transport, .bottom-add { background: var(--surface); } }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   .transport, .bottom-add { background: var(--surface); backdrop-filter: none; -webkit-backdrop-filter: none; }
   .toolbar { background: var(--paper); backdrop-filter: none; -webkit-backdrop-filter: none; }

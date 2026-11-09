@@ -27,7 +27,8 @@ export interface SoundEngine {
   open(buffer: AudioBuffer, onEnded: () => void, onStalled: () => void): Playback;
 }
 
-const BUDGET_BYTES = 128 * 1024 * 1024; // decoded PCM kept ready: about six minutes of stereo audio
+// Decoded PCM kept ready. A phone (coarse pointer) gets half as much: iOS and low-end Android reload tabs that grow too large.
+const BUDGET_BYTES = (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? 64 : 128) * 1024 * 1024;
 const PRELOAD_LIMIT = BUDGET_BYTES * 0.75; // background warming stops here; taps may still fill the rest
 const MAX_SECONDS = 120; // the longest clip the editor produces; longer files stream from the media element
 const UNKNOWN_LENGTH_MAX_BYTES = 2 * 1024 * 1024;
@@ -170,7 +171,8 @@ export function createSoundEngine(): SoundEngine | null {
     liveKeys = live;
     for (const key of attempts.keys()) if (!live.has(key)) attempts.delete(key);
     for (const [key, buffer] of cache) if (!live.has(key)) { cache.delete(key); used -= sizeOf(buffer); }
-    for (const key of recent.keys()) if (!sounds.some(sound => sound.id === key)) recent.delete(key);
+    const ids = new Set(sounds.map(sound => sound.id));
+    for (const key of recent.keys()) if (!ids.has(key)) recent.delete(key);
     const ranked = sounds.filter((s): s is LocalSound => s.source === 'local' && canDecode(s)).sort((a, b) =>
       (recent.get(b.id) ?? 0) - (recent.get(a.id) ?? 0) || Number(b.favorite) - Number(a.favorite) ||
       (a.duration ?? MAX_SECONDS) - (b.duration ?? MAX_SECONDS) || b.createdAt - a.createdAt);
@@ -188,6 +190,8 @@ export function createSoundEngine(): SoundEngine | null {
   function prioritize(sound: Sound): void {
     if (sound.source !== 'local') return;
     recent.set(sound.id, ++sequence);
+    // Already warm and planned: ranking cannot change what is kept, so the tap path skips re-planning the library.
+    if (cache.has(keyOf(sound)) && targets.has(keyOf(sound))) return;
     sync(library);
   }
 
